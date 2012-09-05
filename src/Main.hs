@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+
 module Main where
 --import           CV.Bindings.Types
 import           CV.ColourUtils
@@ -14,16 +15,16 @@ import           System.Environment
 import           System.IO.Unsafe
 import           Utils.DrawingClass
 --import           Utils.GeometryClass
+import           Control.Monad
 
 delit :: Image GrayScale D32 -> Image GrayScale D32
 delit i = i #- gaussian (41,41) i
 
 main :: IO ()
 main = do
-   Just x <- getArgs >>= loadImage . head >>= return
-    . fmap stretchHistogram
-    . fmap (gaussian (13,13))
-    . fmap delit
+   Just x <- liftM
+        (fmap (stretchHistogram . gaussian (13,13) . delit))
+        (getArgs >>= loadImage . head)
    let y = scale Area (2.2,2) . rotate (pi/2) $ x
        lst  = getSURF defaultSURFParams (unsafeImageTo8Bit x) Nothing
        lsty = getSURF defaultSURFParams (unsafeImageTo8Bit y) Nothing
@@ -32,7 +33,7 @@ main = do
   --                    | (C'CvSURFPoint c l s d h,_) <- lst
   --                    , let size = C'CvSize2D32f (fromIntegral s) (fromIntegral $ s`div`2)
   --                    ]
-   saveImage "surf_result.png" $ montage (1,2) 2 [x, (result lst x)] -- ,result lsty y]
+   saveImage "surf_result.png" $ montage (1,2) 2 [x, result lst x] -- ,result lsty y]
    mapM_ print (take 5 lst)
 
 padToSize :: (CreateImage (Image GrayScale D32)) =>  (Int,Int)

@@ -38,8 +38,8 @@ rgbToRgba arr =
                 arr 
                 (\ (Z :. i :. j :. c) -> (Z :. i :. j :. c+1))
                 (\f (Z :. i :. j :. c) -> case c of
-                        3 -> 255
-                        _ -> f (Z :. i :. j :. c)
+                        0 -> 255
+                        _ -> f (Z :. i :. j :. c-1)
                 )
 
 multiChanToPicture :: Bool -> Array F DIM3 Word8 -> (Int, Int, G.Picture)

@@ -54,25 +54,3 @@ multiChanToPicture cache arr = (col, row, glossPic)
 readRepaImage :: FilePath -> IO RD.Image
 readRepaImage = RD.runIL . RD.readImage
 
-
-{-
-
-repaToPicture :: Bool -> Array F.F DIM3 Word8 -> (Int, Int, Picture)
-repaToPicture b arr =
-        let fptr = F.toForeignPtr arr
-            bs   = BI.fromForeignPtr fptr 0 len
-        in (col, row, bitmapOfByteString row col bs b)
- where
-  len = row * col * depth
-  (Z :. row :. col :. depth) = extent arr
-
-
-
-multiChanToPicture arr = (col, row, glossPic)
-  where
-  Z :. col :. row :. _ = extent arr
-  glossPic = G.bitmapOfForeignPtr col row
-                        (R.toForeignPtr arr)
-                        False
-
--}

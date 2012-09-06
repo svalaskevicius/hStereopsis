@@ -2,33 +2,28 @@
 
 module Main where
 
-import           Control.Monad
-import           CV.ColourUtils
-import           CV.DrawableInstances()
-import           CV.Features
-import           CV.Filters
-import           CV.HighGUI
-import           CV.Image
-import           CV.ImageMathOp
-import           CV.ImageOp
-import           CV.Transforms
+import           GlossRepa
+import           Graphics.Gloss
 import           System.Environment
-import           Utils.DrawingClass
 
-delit :: Image GrayScale D32 -> Image GrayScale D32
-delit i = i #- gaussian (41,41) i
-
-main :: IO ()
+main :: IO()
 main = do
-   Just x <- liftM
-        (fmap (stretchHistogram . gaussian (13,13) . delit))
-        (getArgs >>= loadImage . head)
-   let y = rotate (pi/2) x
-       lst  = getSURF defaultSURFParams (unsafeImageTo8Bit x) Nothing
-       lsty = getSURF defaultSURFParams (unsafeImageTo8Bit y) Nothing
-   let result _lst _x = (_x <## map (draw.fst) _lst) :: Image GrayScale D32
-   mapM_ print (take 5 lst)
-   display $ scaleToSize Area True (1024, 750) $ montage (2,2) 3 [x, result lst x, result lsty y]
-   return ()
+        args    <- getArgs
+        case args of
+                [fileName] -> run fileName
+                _ -> putStr $ unlines [ "usage: ... " ]
 
+run :: FilePath -> IO ()
+run fileName = do
+        (width, height, picture) <- loadDevILPicture True fileName
+        putStrLn ("x: " ++ show width ++ ", Y: " ++ show height)
 
+        animate (InWindow fileName (width, height) (10,  10))
+                black (frame width height picture)
+
+frame :: Int -> Int -> Picture -> Float -> Picture
+frame width height picture t
+        = Color (greyN (abs $ sin (t * 2) / 4))
+        $ Pictures
+                [rectangleSolid (fromIntegral width) (fromIntegral height)
+                , picture]

@@ -9,6 +9,14 @@ executable hStereopsis
   main-is:         Main.hs
   build-depends:   
                    base >= 4,
-                   CV
+                   gloss,
+                   repa-io,
+                   repa,
+                   repa-algorithms,
+                   repa-devil,
+                   gloss-raster,
+                   bytestring,
+                   mtl
   ghc-options:     -Wall
+  other-modules:   GlossRepa
 

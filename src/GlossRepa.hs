@@ -1,10 +1,11 @@
--- from http://hackage.haskell.org/package/gloss-devil
+{-# LANGUAGE QuasiQuotes #-}
 
 module GlossRepa
   ( loadDevILPicture
   , repaToPicture
   , readRepaImage
   , toGrayscale
+  , gradientX, gradientY
   ) where
 
 import           Control.Monad
@@ -15,6 +16,8 @@ import           Data.Array.Repa.IO.DevIL        as RD
 import           Data.Array.Repa.Repr.ForeignPtr as R
 import           Data.Word
 import qualified Graphics.Gloss                  as G
+import Data.Array.Repa.Stencil          as R
+import Data.Array.Repa.Stencil.Dim2     as R
 
 force
   :: ( RE.Load r1 sh e, RE.Target r2 e, Source r2 e)
@@ -55,6 +58,30 @@ toRgba (RD.RGBA arr) = RD.RGBA arr
 -- |Read in a file into a repa array (using the 'repa-devil' package)
 readRepaImage :: FilePath -> IO RD.Image
 readRepaImage = RD.runIL . RD.readImage
+
+
+
+
+
+
+gradientX :: RD.Image -> RD.Image
+gradientX (RD.Grey img) = RD.Grey (force $ mapStencil2 (BoundConst 0) stencil img)
+        where stencil = [stencil2| -1  0  1
+                                   -2  0  2
+                                   -1  0  1 |]
+gradientX _ = error "unspported image type for gradient calculation"
+
+gradientY :: RD.Image -> RD.Image
+gradientY (RD.Grey img) = RD.Grey (force $ mapStencil2 (BoundConst 0) stencil img)
+        where stencil = [stencil2| 1  2  1
+                                   0  0  0
+                                  -1 -2 -1 |] 
+gradientY _ = error "unspported image type for gradient calculation"
+
+
+
+
+
 
 
 

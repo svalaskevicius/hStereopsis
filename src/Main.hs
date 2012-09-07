@@ -17,7 +17,7 @@ main = do
 run :: FilePath -> IO ()
 run fileName = do
         img <- readRepaImage fileName
-        let (width, height, picture) = repaToPicture True (toGrayscale img)
+        let (width, height, picture) = repaToPicture True ((gradientY . toGrayscale) img)
 
         putStrLn ("x: " Prelude.++ show width Prelude.++ ", Y: " ++ show height)
         display (InWindow fileName (width, height) (10,  10)) black picture

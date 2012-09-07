@@ -18,12 +18,6 @@ run fileName = do
         (width, height, picture) <- loadDevILPicture True fileName
         putStrLn ("x: " ++ show width ++ ", Y: " ++ show height)
 
-        animate (InWindow fileName (width, height) (10,  10))
-                black (frame width height picture)
+        display (InWindow fileName (width, height) (10,  10))
+                black picture
 
-frame :: Int -> Int -> Picture -> Float -> Picture
-frame width height picture t
-        = Color (greyN (abs $ sin (t * 2) / 4))
-        $ Pictures
-                [rectangleSolid (fromIntegral width) (fromIntegral height)
-                , picture]

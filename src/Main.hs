@@ -6,6 +6,7 @@ import           GlossRepa
 import           Graphics.Gloss
 import           System.Environment
 
+
 main :: IO()
 main = do
         args    <- getArgs
@@ -15,9 +16,9 @@ main = do
 
 run :: FilePath -> IO ()
 run fileName = do
-        (width, height, picture) <- loadDevILPicture True fileName
-        putStrLn ("x: " ++ show width ++ ", Y: " ++ show height)
+        img <- readRepaImage fileName
+        let (width, height, picture) = repaToPicture True (toGrayscale img)
 
-        display (InWindow fileName (width, height) (10,  10))
-                black picture
+        putStrLn ("x: " Prelude.++ show width Prelude.++ ", Y: " ++ show height)
+        display (InWindow fileName (width, height) (10,  10)) black picture
 

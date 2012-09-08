@@ -1,12 +1,11 @@
-{-# LANGUAGE QuasiQuotes, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module GlossRepa
+module ImageFormat
   ( loadDevILPicture
   , repaToPicture
   , readRepaImage
   , toGrayscale
-  , floatToGrayscale
-  , sobel
+  , floatToGrayscale, grayscaleToFloat
   ) where
 
 import           Control.Monad
@@ -17,8 +16,7 @@ import           Data.Array.Repa.IO.DevIL        as RD
 import           Data.Array.Repa.Repr.ForeignPtr as R
 import           Data.Word
 import qualified Graphics.Gloss                  as G
-import           Data.Array.Repa.Stencil         as R
-import           Data.Array.Repa.Stencil.Dim2    as R
+
 
 force
   :: ( RE.Load r1 sh e, RE.Target r2 e, Source r2 e)
@@ -51,6 +49,11 @@ toGrayscale (RD.RGBA arr) = RD.Grey
 
 floatToGrayscale :: (Source a Float) => Array a DIM2 Float -> RD.Image 
 floatToGrayscale arr = RD.Grey (force $ R.map (truncate.(*256)) arr)
+
+grayscaleToFloat :: RD.Image -> Array D DIM2 Float
+grayscaleToFloat (RD.Grey img) = R.map ((/ 256) . fromIntegral) img
+grayscaleToFloat _ = error "non grayscale format provided to grayscaleToFloat"
+
         
 toRgba :: RD.Image -> RD.Image
 toRgba (RD.Grey arr) = RD.RGBA (grayToRgba arr)
@@ -64,31 +67,6 @@ readRepaImage = RD.runIL . RD.readImage
 
 
 
-
-
-
-gradientX :: (Source a Word8) => Array a DIM2 Word8 -> Array PC5 DIM2 Float
-gradientX img = mapStencil2 (BoundConst 0) stencil $ R.map ((/ (3*256)).fromIntegral) img
-        where stencil = [stencil2| -1  0  1
-                                   -2  0  2
-                                   -1  0  1 |]
-
-gradientY :: (Source a Word8) => Array a DIM2 Word8 -> Array PC5 DIM2 Float
-gradientY img = mapStencil2 (BoundConst 0) stencil $ R.map ((/ (3*256)).fromIntegral) img
-        where stencil = [stencil2| 1  2  1
-                                   0  0  0
-                                  -1 -2 -1 |] 
-
-
-sobel :: RD.Image -> (Array D DIM2 Float, Array D DIM2 Float)
-sobel (RD.Grey img) = (delay magnitudes, delay thetas)
-        where
-        gx = gradientX img
-        gy = gradientY img
-        thetaFromDiff x y = if x == 0 then if y < 0 then -pi else if y > 0 then pi else 0 else atan (y / x)
-        magnitudes = R.zipWith (\x y -> sqrt (x * x + y * y)) gx gy
-        thetas = R.zipWith thetaFromDiff gx gy
-sobel _ = error "sobel operator only works on grayscale images"
 
 
 

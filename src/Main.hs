@@ -3,7 +3,8 @@
 module Main where
 
 import           Data.Array.Repa.IO.Matrix
-import           GlossRepa
+import           Algorithm
+import           ImageFormat
 import           Graphics.Gloss
 import           System.Environment
 
@@ -18,7 +19,7 @@ run :: FilePath -> IO ()
 run fileName = do
         img <- readRepaImage fileName
         let greyImg = toGrayscale img
-        let (sbMag, thetas) = sobel greyImg
+        let (sbMag, thetas) = sobel (grayscaleToFloat greyImg)
             (width, height, picture) = repaToPicture True (floatToGrayscale sbMag)
         writeMatrixToTextFile "test.dat" thetas
         putStrLn ("x: " Prelude.++ show width Prelude.++ ", Y: " ++ show height)

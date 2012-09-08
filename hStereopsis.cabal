@@ -18,5 +18,5 @@ executable hStereopsis
                    bytestring,
                    mtl
   ghc-options:     -Wall -threaded
-  other-modules:   GlossRepa
+  other-modules:   Algorithm
 

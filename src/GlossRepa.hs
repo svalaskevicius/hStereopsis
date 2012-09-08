@@ -1,4 +1,4 @@
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE QuasiQuotes, FlexibleContexts #-}
 
 module GlossRepa
   ( loadDevILPicture
@@ -67,13 +67,13 @@ readRepaImage = RD.runIL . RD.readImage
 
 
 
-gradientX :: Array F DIM2 Word8 -> Array PC5 DIM2 Float
+gradientX :: (Source a Word8) => Array a DIM2 Word8 -> Array PC5 DIM2 Float
 gradientX img = mapStencil2 (BoundConst 0) stencil $ R.map ((/ (3*256)).fromIntegral) img
         where stencil = [stencil2| -1  0  1
                                    -2  0  2
                                    -1  0  1 |]
 
-gradientY :: Array F DIM2 Word8 -> Array PC5 DIM2 Float
+gradientY :: (Source a Word8) => Array a DIM2 Word8 -> Array PC5 DIM2 Float
 gradientY img = mapStencil2 (BoundConst 0) stencil $ R.map ((/ (3*256)).fromIntegral) img
         where stencil = [stencil2| 1  2  1
                                    0  0  0

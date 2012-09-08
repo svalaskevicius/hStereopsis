@@ -49,7 +49,7 @@ toGrayscale (RD.RGBA arr) = RD.Grey
                 (\f (Z :. i :. j) -> rgbToGrayScale (f (Z :. i :. j :. 3)) (f (Z :. i :. j :. 2)) (f (Z :. i :. j :. 1)))
         )
 
-floatToGrayscale :: Array U DIM2 Float -> RD.Image 
+floatToGrayscale :: (Source a Float) => Array a DIM2 Float -> RD.Image 
 floatToGrayscale arr = RD.Grey (force $ R.map (truncate.(*256)) arr)
         
 toRgba :: RD.Image -> RD.Image
@@ -80,8 +80,8 @@ gradientY img = mapStencil2 (BoundConst 0) stencil $ R.map ((/ (3*256)).fromInte
                                   -1 -2 -1 |] 
 
 
-sobel :: RD.Image -> (Array U DIM2 Float, Array U DIM2 Float)
-sobel (RD.Grey img) = (force magnitudes, force thetas)
+sobel :: RD.Image -> (Array D DIM2 Float, Array D DIM2 Float)
+sobel (RD.Grey img) = (delay magnitudes, delay thetas)
         where
         gx = gradientX img
         gy = gradientY img

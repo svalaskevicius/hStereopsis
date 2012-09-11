@@ -1,11 +1,20 @@
 hStereopsis
 ===========
 
-Goal: to learn Haskell and do something usefull.
-Idea: stereo image matching to generate a depth map.
-How: Hierarchical Belief Propagation
+Goal
+----
+To learn Haskell and do something usefull.
 
-The Plan:
+Idea
+----
+Stereo image matching to generate a depth map. 
+
+How
+---
+Calculating images disparity map by using the Hierarchical Belief Propagation algorithm.
+
+The Plan
+--------
 * implement image file reading, displaying, writing
 * implement several simple kernels - sobel, gaussian
 * prepare Markov Network to represent the belief space

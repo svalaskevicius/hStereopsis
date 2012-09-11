@@ -2,10 +2,10 @@
 
 module Main where
 
-import           Data.Array.Repa.IO.Matrix
 import           Algorithm
-import           ImageFormat
+import           Data.Array.Repa.IO.Matrix
 import           Graphics.Gloss
+import           ImageFormat
 import           System.Environment
 
 main :: IO()

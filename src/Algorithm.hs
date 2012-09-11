@@ -32,11 +32,11 @@ sobel img = (magnitudes, thetas)
         thetas = R.zipWith thetaFromDiff gx gy
         
 gaussian :: (Source a Float) => Int -> Float -> Array a DIM2 Float -> Array D DIM2 Float
-gaussian width sigma = delay . mapStencil2 BoundClamp (generateGausKernel width sigma)
+gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width sigma)
         
 
-generateGausKernel :: Int -> Float -> Stencil DIM2 Float
-generateGausKernel width sigma = makeStencil2 width width genStencil
+generateGaussKernel :: Int -> Float -> Stencil DIM2 Float
+generateGaussKernel width sigma = makeStencil2 width width genStencil
         where
         center = (truncate.(/ (2::Float)).fromIntegral) width
         gaussianKernel = [exp(-( fromIntegral (x*x + y*y)/(2*sigma*sigma) )) | x <- [-center..center], y <- [-center..center]]

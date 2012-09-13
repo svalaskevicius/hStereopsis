@@ -71,7 +71,7 @@ readRepaImage = RD.runIL . RD.readImage
 
 
 rgbToGrayScale :: Word8 -> Word8 -> Word8 -> Word8
-rgbToGrayScale r g b = truncate (((0.2989 :: Float) * fromIntegral r) + (0.5870 * fromIntegral g) + (0.1140 * fromIntegral b))
+rgbToGrayScale r g b = round (((0.2989 :: Float) * fromIntegral r) + (0.5870 * fromIntegral g) + (0.1140 * fromIntegral b))
 
 
         

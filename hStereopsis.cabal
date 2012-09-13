@@ -17,6 +17,5 @@ executable hStereopsis
                    gloss-raster,
                    bytestring,
                    mtl
-  ghc-options:     -Wall -threaded
-  other-modules:   Algorithm
+  ghc-options:     -Wall -threaded -rtsopts
 

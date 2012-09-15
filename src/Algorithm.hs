@@ -10,18 +10,6 @@ import           Data.Array.Repa                 as R
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
 
-gradientX :: (Source a Float) => Array a DIM2 Float -> Array PC5 DIM2 Float
-gradientX = mapStencil2 BoundClamp stencil
-        where stencil = [stencil2| -1  0  1
-                                   -2  0  2
-                                   -1  0  1 |]
-
-gradientY :: (Source a Float) => Array a DIM2 Float -> Array PC5 DIM2 Float
-gradientY = mapStencil2 BoundClamp stencil
-        where stencil = [stencil2| 1  2  1
-                                   0  0  0
-                                  -1 -2 -1 |] 
-
 sobel :: (Source a Float) => Array a DIM2 Float -> (Array D DIM2 Float, Array D DIM2 Float)
 sobel img = (magnitudes, thetas)
         where
@@ -45,4 +33,16 @@ generateGaussKernel width sigma = makeStencil2 width width genStencil
                 | x >= -center && x <= center && y >= -center && y <= center = Just (normalisedGaussian!(Z:.x+center:.y+center))
                 | otherwise = Nothing
          
+gradientX :: (Source a Float) => Array a DIM2 Float -> Array PC5 DIM2 Float
+gradientX = mapStencil2 BoundClamp stencil
+        where stencil = [stencil2| -1  0  1
+                                   -2  0  2
+                                   -1  0  1 |]
+
+gradientY :: (Source a Float) => Array a DIM2 Float -> Array PC5 DIM2 Float
+gradientY = mapStencil2 BoundClamp stencil
+        where stencil = [stencil2| 1  2  1
+                                   0  0  0
+                                  -1 -2 -1 |] 
+
 

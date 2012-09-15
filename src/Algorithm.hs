@@ -7,6 +7,7 @@ module Algorithm
   ) where
 
 import           Data.Array.Repa                 as R
+import           Data.Array.Repa.Eval            as R
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
 
@@ -22,6 +23,12 @@ sobel img = (magnitudes, thetas)
 gaussian :: (Source a Float) => Int -> Float -> Array a DIM2 Float -> Array D DIM2 Float
 gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width sigma)
         
+
+initMarkovNetwork :: Int -> Int -> Int -> Array D DIM4 Float
+initMarkovNetwork width height nDisparities = R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
+
+
+
 
 generateGaussKernel :: Int -> Float -> Stencil DIM2 Float
 generateGaussKernel width sigma = makeStencil2 width width genStencil

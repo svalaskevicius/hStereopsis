@@ -1,8 +1,9 @@
-{-# LANGUAGE QuasiQuotes, FlexibleContexts #-}
+{-# LANGUAGE QuasiQuotes, FlexibleContexts, ScopedTypeVariables #-}
 
 module Algorithm
   (
-        sobel
+        downSample
+        , sobel
         , gaussian
         
         , initMarkovNetwork
@@ -45,6 +46,25 @@ type DisparityCompatibility = (Int -> Int -> Int -> Int -> Int -> Float)
   Parameters: T_x, T_y, D
 -}
 type ObservedState = (Int -> Int -> Int -> Float)
+
+-- | Downsample the image by a factor of 2, until both dimensions are smaller or equal than the given number in pixels
+downSample :: (Source a Float) => Int -> Array a DIM2 Float -> Array D DIM2 Float 
+downSample maxDim img = 
+                        traverse img
+                        (\(Z:.w:.h) -> (Z:.round(fromIntegral w / fromIntegral factor):.round (fromIntegral h/fromIntegral factor)))
+                        (\_ (Z:.x:.y) -> sumAllS (pixelSample x y) / fromIntegral (factor * factor))
+                        where 
+                        (Z:.width:.height) = extent img
+                        (factor::Int) = round $ head [
+                                (2::Float) ^ i
+                                | i<-[(1::Integer)..], 
+                                (fromIntegral width / (2::Float) ^ i) < fromIntegral maxDim,
+                                (fromIntegral height / (2::Float) ^ i) < fromIntegral maxDim
+                                ]
+                        pixelSample :: Int -> Int -> Array D DIM2 Float
+                        pixelSample x y = fromFunction
+                                        (Z:.factor:.factor)
+                                        (\(Z:._x:._y) -> img!(Z:.x*factor+_x:.y*factor+_y))
 
 
 sobel :: (Source a Float) => Array a DIM2 Float -> (Array D DIM2 Float, Array D DIM2 Float)

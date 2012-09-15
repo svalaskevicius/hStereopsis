@@ -16,6 +16,7 @@ executable hStereopsis
                    repa-devil,
                    gloss-raster,
                    bytestring,
-                   mtl
+                   mtl,
+                   list-extras
   ghc-options:     -Wall -threaded -rtsopts
 

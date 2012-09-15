@@ -11,12 +11,15 @@ module Algorithm
         , disparityCompatibility
         , initObservedStates
         , retrieveObservedState
+        , disparities
   ) where
 
 import           Data.Array.Repa                 as R hiding ((++))
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
+import Data.Array.Repa
 import Debug.Trace
+import Data.List.Extras.Argmax
 
 {-|
   Define Markov Network for message passing of Loopy Belief Propagation
@@ -103,18 +106,28 @@ initObservedStates nDisparities imgLeft imgRight = computeP $ imgLeft `deepSeqAr
 retrieveObservedState :: Array U DIM3 Float -> ObservedState
 retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
 
-updateMessages ::  Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
+-- | missing normalisation
+updateMessages :: Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
 updateMessages net dispCompat observedState = computeP $ traverse net id (newMessage dispCompat observedState (width, height, nDisparities))
         where
         (Z :. width :. height :. _ :. nDisparities) = extent net
 
+belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int -> Float
+belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]] 
+
+disparities :: Source a Float => MarkovNet a -> ObservedState -> IO(Array U DIM2 Int)
+disparities net observedState = computeP $ traverse
+                                           net
+                                           (\ (Z:.w:.h:.4:._) -> (Z:.w:.h))
+                                           (\_ (Z:.x:.y) -> (argmax (belief net observedState x y) [0..nDisparities-1]))
+                                           where
+                                           (Z:._:._:._:.nDisparities) = extent net
 
 -- Private Loopy Belief Propagation functions:
 
 
 newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
 newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
-        trace ("newmsg "++show tx++" "++show ty++" "++show sd++" "++show d_T) $
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
                         let energy d_S = disparityCompat tx ty sd d_S d_T 

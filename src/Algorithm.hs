@@ -4,14 +4,18 @@ module Algorithm
   (
         sobel
         , gaussian
+        
         , initMarkovNetwork
         , updateMessages
+        , disparityCompatibility
+        , initObservedStates
+        , retrieveObservedState
   ) where
 
-import           Data.Array.Repa                 as R
+import           Data.Array.Repa                 as R hiding ((++))
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
-
+import Debug.Trace
 
 {-|
   Define Markov Network for message passing of Loopy Belief Propagation
@@ -57,26 +61,47 @@ gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width
         
 
 
-initMarkovNetwork :: Int -> Int -> Int -> MarkovNet D
-initMarkovNetwork width height nDisparities = R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
+initMarkovNetwork :: Int -> Int -> Int -> IO(MarkovNet U)
+initMarkovNetwork width height nDisparities = computeP $ R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
 
-updateMessages ::  Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> MarkovNet D
-updateMessages net dispCompat observedState = traverse net id (newMessage dispCompat observedState nDisparities)
+disparityCompatibility :: DisparityCompatibility
+disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/sigma_p))+e_p
         where
-        (Z :. _ :. _ :. _ :. nDisparities) = extent net
+        e_p = 0.05
+        sigma_p = 0.6
+
+initObservedStates :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO(Array U DIM3 Float) 
+initObservedStates nDisparities imgLeft imgRight = computeP $ imgLeft `deepSeqArray` imgRight `deepSeqArray` traverse 
+        imgLeft 
+        (\(Z:.w:.h)->(Z:.w:.h:.nDisparities))
+        (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y d)/sigma_d))+e_d)
+        where
+        e_d = 0.01
+        sigma_d = 8
+        f x y d = if x >= d then imgLeft ! (Z :. x :. y) - imgRight ! (Z :. x - d :. y) else 1 
+        
+retrieveObservedState :: Array U DIM3 Float -> ObservedState
+retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
+
+updateMessages ::  Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
+updateMessages net dispCompat observedState = computeP $ traverse net id (newMessage dispCompat observedState (width, height, nDisparities))
+        where
+        (Z :. width :. height :. _ :. nDisparities) = extent net
 
 
 -- Private Loopy Belief Propagation functions:
 
 
-newMessage :: DisparityCompatibility -> ObservedState -> Int -> (DIM4 -> Float) -> DIM4 -> Float
-newMessage disparityCompat observedState nDisparities network (Z :. tx :. ty :. sd :. d_T) = 
-        maximum [energy d_S | d_S<-[0..nDisparities]]
-        where
-        (sx, sy) = sourceCoordinates tx ty sd
-        energy d_S = disparityCompat tx ty sd d_S d_T 
-                * observedState sx sy d_S 
-                * product [network (Z :. sx :. sy :. k :. d_S) | k <- [1 .. 4], k /= inverseRelation sd]
+newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
+newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
+        trace ("newmsg "++show tx++" "++show ty++" "++show sd++" "++show d_T) $
+        case sourceCoordinates (width, height) tx ty sd of
+                Just (sx, sy) ->
+                        let energy d_S = disparityCompat tx ty sd d_S d_T 
+                                * observedState sx sy d_S 
+                                * product [network (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
+                        in maximum [energy d_S | d_S<-[0..nDisparities-1]]
+                Nothing -> 0
 
 inverseRelation :: Int -> Int
 inverseRelation 0 = 2
@@ -85,12 +110,12 @@ inverseRelation 2 = 0
 inverseRelation 3 = 1
 inverseRelation _ = error "inverseRelation:: unknown relation" 
 
-sourceCoordinates :: Int -> Int -> Int -> (Int, Int)
-sourceCoordinates tx ty 0 = (tx, ty-1) 
-sourceCoordinates tx ty 1 = (tx+1, ty) 
-sourceCoordinates tx ty 2 = (tx, ty+1) 
-sourceCoordinates tx ty 3 = (tx-1, ty) 
-sourceCoordinates _ _ _ = error "sourceCoordinates:: Cannot compute source position from the given sd" 
+sourceCoordinates :: (Int, Int) -> Int -> Int -> Int -> Maybe (Int, Int)
+sourceCoordinates (_, _) tx ty 0 = if ty > 0 then Just (tx, ty-1) else Nothing  
+sourceCoordinates (w, _) tx ty 1 = if tx < w-1 then Just (tx+1, ty) else Nothing  
+sourceCoordinates (_, h) tx ty 2 = if ty < h-1 then Just (tx, ty+1) else Nothing 
+sourceCoordinates (_, _) tx ty 3 = if tx > 0 then Just (tx-1, ty) else Nothing 
+sourceCoordinates _ _ _ _ = error "sourceCoordinates:: Cannot compute source position from the given sd" 
 
 
 

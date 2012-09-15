@@ -4,11 +4,11 @@ module Algorithm
   (
         sobel
         , gaussian
+        , initMarkovNetwork
+        , updateMessages
   ) where
 
-import           Control.Monad.Identity (runIdentity)
 import           Data.Array.Repa                 as R
-import           Data.Array.Repa.Eval            as R
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
 
@@ -16,29 +16,29 @@ import           Data.Array.Repa.Stencil.Dim2    as R
 {-|
   Define Markov Network for message passing of Loopy Belief Propagation
   The dimensions define values as:
-        Z :. S_x :. S_y :. T_d :. Disparity
-  Where T_d takes values according to the following schema
-  depending on relative position from S:
+        Z :. T_x :. T_y :. S_d :. Disparity
+  Where S_d takes values according to the following schema
+  depending on relative position from T:
     1
-  2 S 3
+  2 T 3
     4
 -}
 type MarkovNet a = Array a DIM4 Float
 
 {-|
   Calculate likelihood of disparity between source and target
-  Parameters: S_x, S_y, T_d, D
-  Where T_d takes values according to the following schema
-  depending on relative position from S:
+  Parameters: T_x, T_y, S_d, D_s, D_t
+  Where S_d takes values according to the following schema
+  depending on relative position from T:
     1
-  2 S 3
+  2 T 3
     4
 -}
-type DisparityCompatibility = (Int -> Int -> Int -> Int -> Float)
+type DisparityCompatibility = (Int -> Int -> Int -> Int -> Int -> Float)
 
 {-|
-  Calculate data likelihood for Source position and given disparity
-  Parameters: S_x, S_y, D
+  Calculate data likelihood for Target position and given disparity
+  Parameters: T_x, T_y, D
 -}
 type ObservedState = (Int -> Int -> Int -> Float)
 
@@ -59,8 +59,33 @@ gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width
 initMarkovNetwork :: Int -> Int -> Int -> MarkovNet D
 initMarkovNetwork width height nDisparities = R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
 
-updateMessages ::  Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> MarkovNet U
-updateMessages net _ _ = force $ delay net
+updateMessages ::  Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> MarkovNet D
+updateMessages net dispCompat observedState = traverse net id (newMessage dispCompat observedState nDisparities)
+        where
+        (Z :. _ :. _ :. _ :. nDisparities) = extent net
+
+newMessage :: DisparityCompatibility -> ObservedState -> Int -> (DIM4 -> Float) -> DIM4 -> Float
+newMessage disparityCompat observedState nDisparities network (Z :. tx :. ty :. sd :. d_T) = 
+        maximum [energy d_S | d_S<-[0..nDisparities]]
+        where
+        (sx, sy) = sourceCoordinates tx ty sd
+        energy d_S = disparityCompat tx ty sd d_S d_T 
+                * observedState sx sy d_S 
+                * product [network (Z :. sx :. sy :. k :. d_S) | k <- [1 .. 4], k /= inverseRelation sd]
+
+inverseRelation :: Int -> Int
+inverseRelation 1 = 4
+inverseRelation 2 = 3
+inverseRelation 3 = 2
+inverseRelation 4 = 1
+inverseRelation _ = error "inverseRelation:: unknown relation" 
+
+sourceCoordinates :: Int -> Int -> Int -> (Int, Int)
+sourceCoordinates tx ty 1 = (tx, ty-1) 
+sourceCoordinates tx ty 2 = (tx-1, ty) 
+sourceCoordinates tx ty 3 = (tx+1, ty) 
+sourceCoordinates tx ty 4 = (tx, ty+1) 
+sourceCoordinates _ _ _ = error "sourceCoordinates:: Cannot compute source position from the given sd" 
 
 
 -- Private functions:
@@ -87,11 +112,6 @@ gradientY = mapStencil2 BoundClamp stencil
                                   -1 -2 -1 |] 
 
 
-
-force
-  :: ( R.Load r1 sh e, R.Target r2 e, Source r2 e)
-  => Array r1 sh e -> Array r2 sh e
-force = runIdentity . computeP
 
 
 

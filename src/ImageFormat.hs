@@ -48,10 +48,10 @@ toGrayscale (RD.RGBA arr) = RD.Grey
         )
 
 floatToGrayscale :: (Source a Float) => Array a DIM2 Float -> RD.Image 
-floatToGrayscale arr = RD.Grey (force $ R.map (truncate.(*256)) arr)
+floatToGrayscale arr = RD.Grey (force $ R.map (truncate.(*255)) arr)
 
 grayscaleToFloat :: RD.Image -> Array D DIM2 Float
-grayscaleToFloat (RD.Grey img) = R.map ((/ 256) . fromIntegral) img
+grayscaleToFloat (RD.Grey img) = R.map ((/ 255) . fromIntegral) img
 grayscaleToFloat _ = error "non grayscale format provided to grayscaleToFloat"
 
         

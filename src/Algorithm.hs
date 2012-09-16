@@ -54,10 +54,10 @@ type ObservedState = (Int -> Int -> Int -> Float)
 downSample :: (Source a Float) => Int -> Array a DIM2 Float -> Array D DIM2 Float 
 downSample maxDim img = 
                         traverse img
-                        (\(Z:.w:.h) -> (Z:.round(fromIntegral w / fromIntegral factor):.round (fromIntegral h/fromIntegral factor)))
-                        (\_ (Z:.x:.y) -> sumAllS (pixelSample x y) / fromIntegral (factor * factor))
+                        (\(Z:.h:.w) -> (Z:.round(fromIntegral h / fromIntegral factor):.round (fromIntegral w/fromIntegral factor)))
+                        (\_ (Z:.y:.x) -> sumAllS (pixelSample y x) / fromIntegral (factor * factor))
                         where 
-                        (Z:.width:.height) = extent img
+                        (Z:.height:.width) = extent img
                         (factor::Int) = round $ head [
                                 (2::Float) ^ i
                                 | i<-[(1::Integer)..], 
@@ -65,9 +65,9 @@ downSample maxDim img =
                                 (fromIntegral height / (2::Float) ^ i) < fromIntegral maxDim
                                 ]
                         pixelSample :: Int -> Int -> Array D DIM2 Float
-                        pixelSample x y = fromFunction
+                        pixelSample y x = fromFunction
                                         (Z:.factor:.factor)
-                                        (\(Z:._x:._y) -> img!(Z:.x*factor+_x:.y*factor+_y))
+                                        (\(Z:._y:._x) -> img!(Z:.y*factor+_y:.x*factor+_x))
 
 
 sobel :: (Source a Float) => Array a DIM2 Float -> (Array D DIM2 Float, Array D DIM2 Float)
@@ -93,15 +93,15 @@ disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/si
         e_p = 0.05
         sigma_p = 0.6
 
-initObservedStates :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO(Array U DIM3 Float) 
-initObservedStates nDisparities imgLeft imgRight = computeP $ imgLeft `deepSeqArray` imgRight `deepSeqArray` traverse 
+initObservedStates :: Int -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float) 
+initObservedStates nDisparities imgLeft imgRight = computeP $ traverse 
         imgLeft 
-        (\(Z:.w:.h) -> (Z:.w:.h:.nDisparities))
+        (\(Z:.h:.w) -> (Z:.w:.h:.nDisparities))
         (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y d)/sigma_d))+e_d)
         where
         e_d = 0.01
         sigma_d = 0.3125
-        f x y d = if x >= d then imgLeft ! (Z :. x :. y) - imgRight ! (Z :. x - d :. y) else 1 
+        f x y d = if x >= d then imgLeft ! (Z :. y :. x) - imgRight ! (Z :. y :. x - d) else 1 
         
 retrieveObservedState :: Array U DIM3 Float -> ObservedState
 retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
@@ -114,8 +114,8 @@ updateMessages net dispCompat observedState = computeP $ traverse net id (newMes
 disparities :: Source a Float => MarkovNet a -> ObservedState -> IO(Array U DIM2 Int)
 disparities net observedState = computeP $ traverse
                                            net
-                                           (\ (Z:.w:.h:.4:._) -> (Z:.w:.h))
-                                           (\_ (Z:.x:.y) -> (argmax (belief net observedState x y) [0..nDisparities-1]))
+                                           (\ (Z:.w:.h:.4:._) -> (Z:.h:.w))
+                                           (\_ (Z:.y:.x) -> (argmax (belief net observedState x y) [0..nDisparities-1]))
                                            where
                                            (Z:._:._:._:.nDisparities) = extent net
 

@@ -20,28 +20,39 @@ main = do
 
 run :: FilePath -> FilePath -> IO ()
 run fileNameLeft fileNameRight = do
-        greyImgLeft <- liftM (gaussian 3 0.5 . downSample 80 . grayscaleToFloat . toGrayscale) $ readRepaImage fileNameLeft
-        greyImgRight <- liftM (gaussian 3 0.5 . downSample 80 . grayscaleToFloat . toGrayscale) $ readRepaImage fileNameRight
-        
+        putStrLn "reading images"
+        imgLeft <- readRepaImage fileNameLeft
+        imgRight <- readRepaImage fileNameRight
+        putStrLn "transforming images"
+        (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
+        (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
+        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 80 floatImgLeft
+        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 80 floatImgRight
+        let transform = (sobel . gaussian 3 0.5)
+            (d_greyImgLeft,_) = transform smallFloatImgLeft
+            (d_greyImgRight,_) = transform smallFloatImgRight 
+        greyImgLeft <- computeP d_greyImgLeft
+        greyImgRight <- computeP d_greyImgRight
+
         runIL $ do
                 writeImage "left.png" (floatToGrayscale greyImgLeft)
                 writeImage "right.png" (floatToGrayscale greyImgRight)
-        let (Z:.width:.height) = extent greyImgLeft
+        let (Z:.height:.width) = extent greyImgLeft
+            nDisparities = 8
 
-        putStrLn ("x: "++ show width ++ ", Y: " ++ show height)
+        putStrLn ("W: "++ show width ++ ", H: " ++ show height)
 
         putStrLn "init network"
-        net <- initMarkovNetwork width height 16
+        net <- initMarkovNetwork width height nDisparities
         putStrLn "init state data"
-        stateData <- initObservedStates 16 greyImgLeft greyImgRight
+        stateData <- initObservedStates nDisparities greyImgLeft greyImgRight
 
-        net <- runNet 10 net stateData
+        net' <- runNet 100 net stateData
 
-        disp <- disparities net (retrieveObservedState stateData)
-        putStrLn ("d: "++ show disp)
-        
-        max_ <- foldAllP max 0 disp
-        (dispMap::Array U DIM2 Float) <- computeP $ traverse disp id (\f (Z:.x:.y)-> fromIntegral (f (Z:.x:.y)) / fromIntegral max_)
+        disp <- disparities net' (retrieveObservedState stateData)
+        max_ <- foldAllP max 0 disp        
+        let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
+        putStrLn ("D: "++ show disp ++ " m: "++show max_++" " ++ show dispMap)
         runIL $ do
                 writeImage "disp.png" $ dispMap `deepSeqArray` (floatToGrayscale dispMap)
 

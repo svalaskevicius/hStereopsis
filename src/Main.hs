@@ -1,15 +1,14 @@
-{-# LANGUAGE FlexibleContexts, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import           Algorithm
-import           Data.Array.Repa.IO.Matrix
-import           Graphics.Gloss
+--import           Graphics.Gloss
+import           Data.Array.Repa          as R hiding ((++))
+import           Data.Array.Repa.IO.DevIL
 import           ImageFormat
 import           System.Environment
-import Control.Monad
-import           Data.Array.Repa      as R            hiding ((++))
-import Data.Array.Repa.IO.DevIL
 
 main :: IO()
 main = do
@@ -30,7 +29,7 @@ run fileNameLeft fileNameRight = do
         (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 150 floatImgRight
         let transform = (gaussian 3 0.5)
             d_greyImgLeft = transform smallFloatImgLeft
-            d_greyImgRight = transform smallFloatImgRight 
+            d_greyImgRight = transform smallFloatImgRight
         greyImgLeft <- computeP d_greyImgLeft
         greyImgRight <- computeP d_greyImgRight
 
@@ -50,7 +49,7 @@ run fileNameLeft fileNameRight = do
         net' <- runNet 25 net stateData
 
         disp <- disparities net' (retrieveObservedState stateData)
-        max_ <- foldAllP max 0 disp        
+        max_ <- foldAllP max 0 disp
         let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
         putStrLn ("D: "++ show disp)
         runIL $ writeImage "disp.png" $ floatToGrayscale dispMap
@@ -60,10 +59,10 @@ run fileNameLeft fileNameRight = do
   --      writeMatrixToTextFile "test.dat" thetas
 --        display (InWindow fileNameLeft (width, height) (10,  10)) white picture
         return()
-        
 
-runNet :: Int -> Array U DIM4 Float -> Array U DIM3 Float -> IO(Array U DIM4 Float) 
-runNet 0 net _ = return net 
+
+runNet :: Int -> MarkovNet U -> Array U DIM3 Float -> IO(MarkovNet U)
+runNet 0 net _ = return net
 runNet times net state = do
         putStrLn ("running.. "++show times++" times left")
         net1 <- updateMessages net disparityCompatibility (retrieveObservedState state)

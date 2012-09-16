@@ -18,7 +18,6 @@ module Algorithm
 import           Data.Array.Repa                 as R hiding ((++))
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
-import Debug.Trace
 import Data.List.Extras.Argmax
 
 {-|
@@ -54,7 +53,7 @@ type ObservedState = (Int -> Int -> Int -> Float)
 downSample :: (Source a Float) => Int -> Array a DIM2 Float -> Array D DIM2 Float 
 downSample maxDim img = 
                         traverse img
-                        (\(Z:.h:.w) -> (Z:.round(fromIntegral h / fromIntegral factor):.round (fromIntegral w/fromIntegral factor)))
+                        (\(Z:.h:.w) -> (Z:.round((fromIntegral h :: Float) / fromIntegral factor):.round ((fromIntegral w :: Float)/fromIntegral factor)))
                         (\_ (Z:.y:.x) -> sumAllS (pixelSample y x) / fromIntegral (factor * factor))
                         where 
                         (Z:.height:.width) = extent img
@@ -122,8 +121,7 @@ disparities net observedState = computeP $ traverse
 normaliseNet :: MarkovNet U -> IO(MarkovNet U)
 normaliseNet net = do
         ds <- sumP net
-        dss <- sumP ds
-        let (Z:.w:.h:._:.ndisp) = extent net
+        let (Z:._:._:._:.ndisp) = extent net
         computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) *fromIntegral ndisp)
 
 

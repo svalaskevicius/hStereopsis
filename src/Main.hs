@@ -53,8 +53,7 @@ run fileNameLeft fileNameRight = do
         max_ <- foldAllP max 0 disp        
         let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
         putStrLn ("D: "++ show disp)
-        runIL $ do
-                writeImage "disp.png" $ dispMap `deepSeqArray` (floatToGrayscale dispMap)
+        runIL $ writeImage "disp.png" $ floatToGrayscale dispMap
 
 --        let (_, _, picture) = repaToPicture True (floatToGrayscale greyImgLeft)
        --     (width, height, picture) = (((repaToPicture True).floatToGrayscale.(gaussian 7 7).grayscaleToFloat) greyImg)
@@ -66,7 +65,7 @@ run fileNameLeft fileNameRight = do
 runNet :: Int -> Array U DIM4 Float -> Array U DIM3 Float -> IO(Array U DIM4 Float) 
 runNet 0 net _ = return net 
 runNet times net state = do
-        putStrLn ("running "++show times++" times.")
+        putStrLn ("running.. "++show times++" times left")
         net1 <- updateMessages net disparityCompatibility (retrieveObservedState state)
         net2 <- normaliseNet net1
         runNet (times-1) net2 state

@@ -52,7 +52,7 @@ run fileNameLeft fileNameRight = do
         disp <- disparities net' (retrieveObservedState stateData)
         max_ <- foldAllP max 0 disp        
         let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
-        putStrLn ("D: "++ show disp ++ " m: "++show max_++" " ++ show dispMap)
+        putStrLn ("D: "++ show disp)
         runIL $ do
                 writeImage "disp.png" $ dispMap `deepSeqArray` (floatToGrayscale dispMap)
 

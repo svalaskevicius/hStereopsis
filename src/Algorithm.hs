@@ -142,7 +142,7 @@ newMessage disparityCompat observedState (width, height, nDisparities) network (
                                 * observedState sx sy d_S 
                                 * product [network (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
                         in maximum [energy d_S | d_S<-[0..nDisparities-1]]
-                Nothing -> 0
+                Nothing -> 1
 
 inverseRelation :: Int -> Int
 inverseRelation 0 = 2

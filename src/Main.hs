@@ -26,8 +26,8 @@ run fileNameLeft fileNameRight = do
         putStrLn "transforming images"
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
-        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 250 floatImgLeft
-        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 250 floatImgRight
+        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 150 floatImgLeft
+        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 150 floatImgRight
         let transform = (gaussian 3 0.5)
             d_greyImgLeft = transform smallFloatImgLeft
             d_greyImgRight = transform smallFloatImgRight 
@@ -38,16 +38,16 @@ run fileNameLeft fileNameRight = do
                 writeImage "left.png" (floatToGrayscale greyImgLeft)
                 writeImage "right.png" (floatToGrayscale greyImgRight)
         let (Z:.height:.width) = extent greyImgLeft
-            nDisparities = 8
+            nDisparities = 16
 
         putStrLn ("W: "++ show width ++ ", H: " ++ show height)
 
         putStrLn "init network"
         net <- initMarkovNetwork width height nDisparities
         putStrLn "init state data"
-        stateData <- initObservedStates nDisparities greyImgLeft greyImgRight
+        stateData <- initObservedStates [i*2 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
 
-        net' <- runNet 100 net stateData
+        net' <- runNet 25 net stateData
 
         disp <- disparities net' (retrieveObservedState stateData)
         max_ <- foldAllP max 0 disp        

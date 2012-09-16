@@ -92,12 +92,13 @@ disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/si
         e_p = 0.05
         sigma_p = 0.6
 
-initObservedStates :: Int -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float) 
-initObservedStates nDisparities imgLeft imgRight = computeP $ traverse 
+initObservedStates :: [Int] -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float) 
+initObservedStates dispList imgLeft imgRight = computeP $ traverse 
         imgLeft 
         (\(Z:.h:.w) -> (Z:.w:.h:.nDisparities))
-        (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y d)/sigma_d))+e_d)
+        (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y (dispList!!d))/sigma_d))+e_d)
         where
+        nDisparities = length dispList
         e_d = 0.01
         sigma_d = 0.3125
         f x y d = if x >= d then imgLeft ! (Z :. y :. x) - imgRight ! (Z :. y :. x - d) else 1 

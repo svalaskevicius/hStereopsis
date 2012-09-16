@@ -124,7 +124,7 @@ normaliseNet net = do
         ds <- sumP net
         dss <- sumP ds
         let (Z:.w:.h:._:.ndisp) = extent net
-        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / dss!(Z:.x:.y) *fromIntegral ndisp*4)
+        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) *fromIntegral ndisp)
 
 
 

@@ -21,5 +21,5 @@ The Plan
 * add loopy belief propagation
 * optimise performance by adding several hierarchical levels
 * improve performance by selective update of the nodes
-* experiment with visual cues such as generated occlusion, edges maps
+* experiment with visual cues such as generated occlusion, edge maps, (colour segments?)
 

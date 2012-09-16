@@ -26,11 +26,11 @@ run fileNameLeft fileNameRight = do
         putStrLn "transforming images"
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
-        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 80 floatImgLeft
-        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 80 floatImgRight
-        let transform = (sobel . gaussian 3 0.5)
-            (d_greyImgLeft,_) = transform smallFloatImgLeft
-            (d_greyImgRight,_) = transform smallFloatImgRight 
+        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 250 floatImgLeft
+        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 250 floatImgRight
+        let transform = (gaussian 3 0.5)
+            d_greyImgLeft = transform smallFloatImgLeft
+            d_greyImgRight = transform smallFloatImgRight 
         greyImgLeft <- computeP d_greyImgLeft
         greyImgRight <- computeP d_greyImgRight
 

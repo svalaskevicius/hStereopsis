@@ -12,12 +12,12 @@ module Algorithm
         , initObservedStates
         , retrieveObservedState
         , disparities
+        , normaliseNet
   ) where
 
 import           Data.Array.Repa                 as R hiding ((++))
 import           Data.Array.Repa.Stencil         as R
 import           Data.Array.Repa.Stencil.Dim2    as R
-import Data.Array.Repa
 import Debug.Trace
 import Data.List.Extras.Argmax
 
@@ -96,24 +96,20 @@ disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/si
 initObservedStates :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO(Array U DIM3 Float) 
 initObservedStates nDisparities imgLeft imgRight = computeP $ imgLeft `deepSeqArray` imgRight `deepSeqArray` traverse 
         imgLeft 
-        (\(Z:.w:.h)->(Z:.w:.h:.nDisparities))
+        (\(Z:.w:.h) -> (Z:.w:.h:.nDisparities))
         (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y d)/sigma_d))+e_d)
         where
         e_d = 0.01
-        sigma_d = 8
+        sigma_d = 0.3125
         f x y d = if x >= d then imgLeft ! (Z :. x :. y) - imgRight ! (Z :. x - d :. y) else 1 
         
 retrieveObservedState :: Array U DIM3 Float -> ObservedState
 retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
 
--- | missing normalisation
 updateMessages :: Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
 updateMessages net dispCompat observedState = computeP $ traverse net id (newMessage dispCompat observedState (width, height, nDisparities))
         where
         (Z :. width :. height :. _ :. nDisparities) = extent net
-
-belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int -> Float
-belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]] 
 
 disparities :: Source a Float => MarkovNet a -> ObservedState -> IO(Array U DIM2 Int)
 disparities net observedState = computeP $ traverse
@@ -123,7 +119,19 @@ disparities net observedState = computeP $ traverse
                                            where
                                            (Z:._:._:._:.nDisparities) = extent net
 
+normaliseNet :: MarkovNet U -> IO(MarkovNet U)
+normaliseNet net = do
+        ds <- sumP net
+        dss <- sumP ds
+        let (Z:.w:.h:._:.ndisp) = extent net
+        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / dss!(Z:.x:.y) *fromIntegral ndisp*4)
+
+
+
 -- Private Loopy Belief Propagation functions:
+
+belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int -> Float
+belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]] 
 
 
 newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float

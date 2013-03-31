@@ -25,8 +25,9 @@ run fileNameLeft fileNameRight = do
         putStrLn "transforming images"
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
-        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample 150 floatImgLeft
-        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample 150 floatImgRight
+        let downSampleFactor = minimumFactorForImageSize 150 floatImgLeft 
+        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample downSampleFactor floatImgLeft
+        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample downSampleFactor floatImgRight
         let transform = (gaussian 3 0.5)
             d_greyImgLeft = transform smallFloatImgLeft
             d_greyImgRight = transform smallFloatImgRight

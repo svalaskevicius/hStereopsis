@@ -5,7 +5,8 @@
 
 module Algorithm
   (
-        downSample
+        minimumFactorForImageSize 
+        , downSample
         , sobel
         , gaussian
 
@@ -56,20 +57,27 @@ type DisparityCompatibility = (Int -> Int -> Int -> Int -> Int -> Float)
 -}
 type ObservedState = (Int -> Int -> Int -> Float)
 
--- | Downsample the image by a factor of 2, until both dimensions are smaller or equal than the given number in pixels
-downSample :: (Source a Float) => Int -> Array a DIM2 Float -> Array D DIM2 Float
-downSample maxDim img =
-                        traverse img
-                        (\(Z:.h:.w) -> (Z:.round((fromIntegral h :: Float) / fromIntegral factor):.round ((fromIntegral w :: Float)/fromIntegral factor)))
-                        (\_ (Z:.y:.x) -> sumAllS (pixelSample y x) / fromIntegral (factor * factor))
-                        where
-                        (Z:.height:.width) = extent img
-                        (factor::Int) = round $ head [
+
+-- | Find a downsampling factor of 2, so that both dimensions are smaller or equal than the given number in pixels
+minimumFactorForImageSize :: (Source a Float) => Int -> Array a DIM2 Float -> Int
+minimumFactorForImageSize maxDim img = 
+                        round $ head [
                                 (2::Float) ^ i
                                 | i<-[(1::Integer)..],
                                 (fromIntegral width / (2::Float) ^ i) < fromIntegral maxDim,
                                 (fromIntegral height / (2::Float) ^ i) < fromIntegral maxDim
                                 ]
+                        where
+                        (Z:.height:.width) = extent img
+
+
+-- | Downsample the image by the given factor of 2
+downSample :: (Source a Float) => Int -> Array a DIM2 Float -> Array D DIM2 Float
+downSample factor img =
+                        traverse img
+                        (\(Z:.h:.w) -> (Z:.round((fromIntegral h :: Float) / fromIntegral factor):.round ((fromIntegral w :: Float)/fromIntegral factor)))
+                        (\_ (Z:.y:.x) -> sumAllS (pixelSample y x) / fromIntegral (factor * factor))
+                        where
                         pixelSample :: Int -> Int -> Array D DIM2 Float
                         pixelSample y x = fromFunction
                                         (Z:.factor:.factor)

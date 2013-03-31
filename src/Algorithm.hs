@@ -106,7 +106,8 @@ scaleNet net width height = computeP $
             (\f (Z:.x:.y:.sd:.d) -> 
                 let (sourceX::Int) = floor((fromIntegral x :: Float) / (fromIntegral (width) :: Float) * fromIntegral w :: Float)
                     (sourceY::Int) = floor((fromIntegral y :: Float) / (fromIntegral (height) :: Float) * fromIntegral h :: Float)
-                in f (Z:.sourceX:.sourceY:.sd:.d) 
+                    (sourceD::Int) = floor((fromIntegral d :: Float) / (fromIntegral (width) :: Float) * fromIntegral w :: Float)
+                in f (Z:.sourceX:.sourceY:.sd:.sourceD) 
             )
         where
         (Z :. w :. h :. _ :. _) = extent net

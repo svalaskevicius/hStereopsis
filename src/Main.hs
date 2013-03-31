@@ -26,13 +26,8 @@ run fileNameLeft fileNameRight = do
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
         let downSampleFactor = minimumFactorForImageSize 150 floatImgLeft 
-        (smallFloatImgLeft::Array U DIM2 Float) <- computeP $ downSample downSampleFactor floatImgLeft
-        (smallFloatImgRight::Array U DIM2 Float) <- computeP $ downSample downSampleFactor floatImgRight
-        let transform = (gaussian 3 0.5)
-            d_greyImgLeft = transform smallFloatImgLeft
-            d_greyImgRight = transform smallFloatImgRight
-        greyImgLeft <- computeP d_greyImgLeft
-        greyImgRight <- computeP d_greyImgRight
+
+        (greyImgLeft, greyImgRight) <- initImages downSampleFactor floatImgLeft floatImgRight
 
         runIL $ do
                 writeImage "left.png" (floatToGrayscale greyImgLeft)
@@ -70,3 +65,15 @@ runNet times net state = do
         net2 <- normaliseNet net1
         runNet (times-1) net2 state
 
+initImages :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO( (Array U DIM2 Float, Array U DIM2 Float) )
+initImages factor left right = do
+    leftRes <- prepareImage factor left
+    rightRes <- prepareImage factor right
+    return (leftRes, rightRes)
+
+prepareImage :: (Source a Float) => Int -> Array a DIM2 Float -> IO(Array U DIM2 Float)
+prepareImage factor img = do
+    (smallImg::Array U DIM2 Float) <- computeP $ downSample factor img
+    let transform = (gaussian 3 0.5)
+        d_greyImg = transform smallImg
+    computeP d_greyImg

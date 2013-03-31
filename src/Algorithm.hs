@@ -43,14 +43,9 @@ type MarkovNet a = Array a DIM4 Float
 
 {-|
   Calculate likelihood of disparity between source and target
-  Parameters: T_x, T_y, S_d, D_s, D_t
-  Where S_d takes values according to the following schema
-  depending on relative position from T:
-    0
-  3 T 1
-    2
+  Parameters: D_s, D_t
 -}
-type DisparityCompatibility = (Int -> Int -> Int -> Int -> Int -> Float)
+type DisparityCompatibility = (Int -> Int -> Float)
 
 {-|
   Calculate data likelihood for Target position and given disparity
@@ -119,7 +114,7 @@ scaleNet net width height = computeP $
 
 
 disparityCompatibility :: DisparityCompatibility
-disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/sigma_p))+e_p
+disparityCompatibility ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/sigma_p))+e_p
         where
         e_p = 0.05
         sigma_p = 0.6
@@ -169,7 +164,7 @@ newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM
 newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
-                        let energy d_S = disparityCompat tx ty sd d_S d_T
+                        let energy d_S = disparityCompat d_S d_T
                                 * observedState sx sy d_S
                                 * product [network (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
                         in maximum [energy d_S | d_S<-[0..nDisparities-1]]

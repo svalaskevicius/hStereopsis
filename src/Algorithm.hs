@@ -11,6 +11,7 @@ module Algorithm
         , gaussian
 
         , initMarkovNetwork
+        , scaleNet
         , updateMessages
         , disparityCompatibility
         , initObservedStates
@@ -100,6 +101,22 @@ gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width
 
 initMarkovNetwork :: Int -> Int -> Int -> IO(MarkovNet U)
 initMarkovNetwork width height nDisparities = computeP $ R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
+
+-- | Quick scaling of a markov network used for upsampling in hierarchical algorithm
+scaleNet :: MarkovNet U -> Int -> Int -> IO(MarkovNet U)
+scaleNet net width height = computeP $ 
+        traverse
+            net 
+            (\(Z:._:._:.sd:.d) -> (Z:.width:.height:.sd:.d))
+            (\f (Z:.x:.y:.sd:.d) -> 
+                let (sourceX::Int) = floor((fromIntegral x :: Float) / (fromIntegral (width) :: Float) * fromIntegral w :: Float)
+                    (sourceY::Int) = floor((fromIntegral y :: Float) / (fromIntegral (height) :: Float) * fromIntegral h :: Float)
+                in f (Z:.sourceX:.sourceY:.sd:.d) 
+            )
+        where
+        (Z :. w :. h :. _ :. _) = extent net
+
+
 
 disparityCompatibility :: DisparityCompatibility
 disparityCompatibility _ _ _ ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/sigma_p))+e_p

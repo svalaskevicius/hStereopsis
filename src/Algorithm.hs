@@ -115,10 +115,12 @@ scaleNet net width height = computeP $
 
 
 disparityCompatibility :: DisparityCompatibility
-disparityCompatibility ds dt = (1-e_p)*exp(-(abs(fromIntegral(ds - dt))/sigma_p))+e_p
+disparityCompatibility ds dt = if dx < t then (1-e_p)*exp(-(dx/sigma_p))+e_p else e_p
         where
         e_p = 0.05
         sigma_p = 0.6
+        t = 3
+        dx = abs(fromIntegral(ds - dt))
 
 initObservedStates :: [Int] -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float)
 initObservedStates dispList imgLeft imgRight = computeP $ traverse

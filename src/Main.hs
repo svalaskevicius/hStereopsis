@@ -30,11 +30,6 @@ run fileNameLeft fileNameRight = do
 
         (net, stateData) <- runNetHierarchy downSampleFactor Nothing floatImgLeft floatImgRight
 
-        disp <- disparities net (retrieveObservedState stateData)
-        max_ <- foldAllP max 0 disp
-        let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
-        putStrLn ("D: "++ show disp)
-        runIL $ writeImage "disp.png" $ floatToGrayscale dispMap
 
 --        let (_, _, picture) = repaToPicture True (floatToGrayscale greyImgLeft)
        --     (width, height, picture) = (((repaToPicture True).floatToGrayscale.(gaussian 7 7).grayscaleToFloat) greyImg)
@@ -63,6 +58,8 @@ runNetHierarchy factor maybeNetData imgLeft imgRight = do
         stateData <- initObservedStates [i*2 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
         net' <- runNet 25 net stateData
 
+        writeDisparities net' stateData ("disparities_"++(show factor)++".png")
+
         runNetHierarchy (factor `shiftR` 1) (Just (net', stateData)) imgLeft imgRight
 
 
@@ -86,3 +83,11 @@ prepareImage factor img = do
     let transform = (gaussian 3 0.5)
         d_greyImg = transform smallImg
     computeP d_greyImg
+
+
+writeDisparities :: MarkovNet U -> Array U DIM3 Float -> String -> IO()
+writeDisparities net stateData fileName = do
+    disp <- disparities net (retrieveObservedState stateData)
+    max_ <- foldAllP max 0 disp
+    let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
+    runIL $ writeImage fileName $ floatToGrayscale dispMap

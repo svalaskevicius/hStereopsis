@@ -18,6 +18,7 @@ module Algorithm
         , retrieveObservedState
         , disparities
         , normaliseNet
+        , networkDiff
 
         , MarkovNet
         , DisparityCompatibility
@@ -136,8 +137,8 @@ initObservedStates dispList imgLeft imgRight = computeP $ traverse
 retrieveObservedState :: Array U DIM3 Float -> ObservedState
 retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
 
-updateMessages :: Source a Float => MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
-updateMessages net dispCompat observedState = computeP $ traverse net id (newMessage dispCompat observedState (width, height, nDisparities))
+updateMessages :: Source a Float => Array U DIM2 Float -> MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
+updateMessages lastDiff net dispCompat observedState = computeP $ traverse net id (lazyMessage lastDiff dispCompat observedState (width, height, nDisparities))
         where
         (Z :. width :. height :. _ :. nDisparities) = extent net
 
@@ -153,8 +154,14 @@ normaliseNet :: MarkovNet U -> IO(MarkovNet U)
 normaliseNet net = do
         ds <- sumP net
         let (Z:._:._:._:.ndisp) = extent net
-        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) *fromIntegral ndisp)
+        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp)
 
+networkDiff :: MarkovNet U -> MarkovNet U -> IO(Array U DIM2 Float)
+networkDiff a b = do
+    diff :: MarkovNet U <- computeP $ a -^ b
+    sqDiff :: MarkovNet U <- computeP $ diff *^ diff
+    r1 <- sumP $ sqDiff
+    sumP r1
 
 
 -- Private Loopy Belief Propagation functions:
@@ -162,6 +169,17 @@ normaliseNet net = do
 belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int -> Float
 belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]]
 
+
+lazyMessage :: Array U DIM2 Float -> DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
+lazyMessage lastDiff disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
+        case sourceCoordinates (width, height) tx ty sd of
+                Just (sx, sy) ->
+                    let alpha = 0.001
+                    in if lastDiff!(Z:.sx:.sy) < alpha then
+                        network(Z:.tx:.ty:.sd:.d_T)
+                    else
+                        newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T)
+                Nothing -> 1
 
 newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
 newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =

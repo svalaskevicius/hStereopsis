@@ -55,21 +55,32 @@ runNetHierarchy factor maybeNetData imgLeft imgRight = do
         net <- case maybeNetData of
             Just (sourceNet, _) -> scaleNet sourceNet width height
             Nothing -> initMarkovNetwork width height nDisparities
-        stateData <- initObservedStates [i*2 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
-        net' <- runNet 25 net stateData
+        stateData <- initObservedStates [i*4 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
+        net' <- runNet 2500 Nothing net stateData
 
         writeDisparities net' stateData ("disparities_"++(show factor)++".png")
 
-        runNetHierarchy (factor `shiftR` 1) (Just (net', stateData)) imgLeft imgRight
+        return (net', stateData)
+--        runNetHierarchy (factor `shiftR` 1) (Just (net', stateData)) imgLeft imgRight
 
 
-runNet :: Int -> MarkovNet U -> Array U DIM3 Float -> IO(MarkovNet U)
-runNet 0 net _ = return net
-runNet times net state = do
+runNet :: Int -> Maybe (Array U DIM2 Float) -> MarkovNet U -> Array U DIM3 Float -> IO(MarkovNet U)
+runNet 0 _ net _ = return net
+runNet times Nothing net state =
+    runNet times (Just initialDiff) net state
+    where
+    (Z:.w:.h:.4:.d) = extent(net)
+    initialDiff = fromListUnboxed (Z :. (w::Int) :. (h::Int)) [1 | i<-[1..w*h]]
+
+runNet times (Just lastDiff) net state = do
         putStrLn ("running.. "++show times++" times left")
-        net1 <- updateMessages net disparityCompatibility (retrieveObservedState state)
-        net2 <- normaliseNet net1
-        runNet (times-1) net2 state
+        net' <- updateMessages lastDiff net disparityCompatibility (retrieveObservedState state)
+        net'' <- normaliseNet net'
+        diff <- networkDiff net net''
+        err' <- sumP diff
+        err <- sumP err'
+        putStrLn ("err: "++show err)
+        runNet (if ((err!(Z)) > 0) then (times-1) else 0) (Just diff) net'' state 
 
 initImages :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO( (Array U DIM2 Float, Array U DIM2 Float) )
 initImages factor left right = do

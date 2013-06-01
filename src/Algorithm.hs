@@ -120,7 +120,7 @@ disparityCompatibility ds dt = if dx < t then (1-e_p)*exp(-(dx/sigma_p))+e_p els
         where
         e_p = 0.05
         sigma_p = 0.6
-        t = 3
+        t = 4
         dx = abs(fromIntegral(ds - dt))
 
 initObservedStates :: [Int] -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float)

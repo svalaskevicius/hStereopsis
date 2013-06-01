@@ -26,7 +26,7 @@ run fileNameLeft fileNameRight = do
         putStrLn "transforming images"
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
-        let downSampleFactor = minimumFactorForImageSize 32 floatImgLeft 
+        let downSampleFactor = minimumFactorForImageSize 192 floatImgLeft 
 
         (net, stateData) <- runNetHierarchy downSampleFactor Nothing floatImgLeft floatImgRight
 
@@ -38,7 +38,7 @@ run fileNameLeft fileNameRight = do
         return()
 
 runNetHierarchy :: Int -> Maybe (MarkovNet U, Array U DIM3 Float) -> Array U DIM2 Float -> Array U DIM2 Float -> IO((MarkovNet U, Array U DIM3 Float))
-runNetHierarchy 0 (Just (net, stateData)) _ _ = return (net, stateData)
+runNetHierarchy 4 (Just (net, stateData)) _ _ = return (net, stateData)
 runNetHierarchy factor maybeNetData imgLeft imgRight = do
         putStrLn ("Initialise hierarchy level "++show factor)
         
@@ -56,7 +56,7 @@ runNetHierarchy factor maybeNetData imgLeft imgRight = do
             Just (sourceNet, _) -> scaleNet sourceNet width height
             Nothing -> initMarkovNetwork width height nDisparities
         stateData <- initObservedStates [i*4 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
-        net' <- runNet 2500 Nothing net stateData
+        net' <- runNet 500 Nothing net stateData
 
         writeDisparities net' stateData ("disparities_"++(show factor)++".png")
 
@@ -80,7 +80,8 @@ runNet times (Just lastDiff) net state = do
         err' <- sumP diff
         err <- sumP err'
         putStrLn ("err: "++show err)
-        runNet (if ((err!(Z)) > 0) then (times-1) else 0) (Just diff) net'' state 
+        runIL $ writeImage ("diff_"++(show times)++".png") $ floatToGrayscale diff
+        runNet (if ((err!(Z)) > 0.0000001) then (times-1) else 0) (Just diff) net'' state 
 
 initImages :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO( (Array U DIM2 Float, Array U DIM2 Float) )
 initImages factor left right = do

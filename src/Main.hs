@@ -9,7 +9,6 @@ import           Data.Array.Repa          as R hiding ((++))
 import           Data.Array.Repa.IO.DevIL
 import           ImageFormat
 import           System.Environment
-import Data.Bits
 
 main :: IO()
 main = do
@@ -26,20 +25,14 @@ run fileNameLeft fileNameRight = do
         putStrLn "transforming images"
         (floatImgLeft::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgLeft
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
-        let downSampleFactor = minimumFactorForImageSize 192 floatImgLeft 
+        let downSampleFactor = minimumFactorForImageSize 212 floatImgLeft 
 
-        (net, stateData) <- runNetHierarchy downSampleFactor Nothing floatImgLeft floatImgRight
+        (_, _) <- calculateDisparities downSampleFactor floatImgLeft floatImgRight
 
-
---        let (_, _, picture) = repaToPicture True (floatToGrayscale greyImgLeft)
-       --     (width, height, picture) = (((repaToPicture True).floatToGrayscale.(gaussian 7 7).grayscaleToFloat) greyImg)
-  --      writeMatrixToTextFile "test.dat" thetas
---        display (InWindow fileNameLeft (width, height) (10,  10)) white picture
         return()
 
-runNetHierarchy :: Int -> Maybe (MarkovNet U, Array U DIM3 Float) -> Array U DIM2 Float -> Array U DIM2 Float -> IO((MarkovNet U, Array U DIM3 Float))
-runNetHierarchy 4 (Just (net, stateData)) _ _ = return (net, stateData)
-runNetHierarchy factor maybeNetData imgLeft imgRight = do
+calculateDisparities :: Int -> Array U DIM2 Float -> Array U DIM2 Float -> IO((DynamicNetwork U U, Array U DIM3 Float))
+calculateDisparities factor imgLeft imgRight = do
         putStrLn ("Initialise hierarchy level "++show factor)
         
         (greyImgLeft, greyImgRight) <- initImages factor imgLeft imgRight
@@ -47,30 +40,27 @@ runNetHierarchy factor maybeNetData imgLeft imgRight = do
                 writeImage ("left_"++show factor++".png") (floatToGrayscale greyImgLeft)
                 writeImage ("right_"++show factor++".png") (floatToGrayscale greyImgRight)
         let (Z:.height:.width) = extent greyImgLeft
-            nDisparities = 16
+            nDisparities = 8
 
         putStrLn ("W: "++ show width ++ ", H: " ++ show height)
 
         putStrLn "init network data"
-        net <- case maybeNetData of
-            Just (sourceNet, _) -> scaleNet sourceNet width height
-            Nothing -> initMarkovNetwork width height nDisparities
+        net <- initDynamicNetwork width height nDisparities
         stateData <- initObservedStates [i*4 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
         net' <- runNet 500 Nothing net stateData
 
         writeDisparities net' stateData ("disparities_"++(show factor)++".png")
 
         return (net', stateData)
---        runNetHierarchy (factor `shiftR` 1) (Just (net', stateData)) imgLeft imgRight
 
 
-runNet :: Int -> Maybe (Array U DIM2 Float) -> MarkovNet U -> Array U DIM3 Float -> IO(MarkovNet U)
+runNet :: Int -> Maybe (Array U DIM2 Float) -> DynamicNetwork U U -> Array U DIM3 Float -> IO(DynamicNetwork U U)
 runNet 0 _ net _ = return net
 runNet times Nothing net state =
     runNet times (Just initialDiff) net state
     where
-    (Z:.w:.h:.4:.d) = extent(net)
-    initialDiff = fromListUnboxed (Z :. (w::Int) :. (h::Int)) [1 | i<-[1..w*h]]
+    (Z:.w:.h:.4:._) = extent(network net)
+    initialDiff = fromListUnboxed (Z :. (w::Int) :. (h::Int)) [1 | _<-[1..w*h]]
 
 runNet times (Just lastDiff) net state = do
         putStrLn ("running.. "++show times++" times left")
@@ -81,7 +71,7 @@ runNet times (Just lastDiff) net state = do
         err <- sumP err'
         putStrLn ("err: "++show err)
         runIL $ writeImage ("diff_"++(show times)++".png") $ floatToGrayscale diff
-        runNet (if ((err!(Z)) > 0.0000001) then (times-1) else 0) (Just diff) net'' state 
+        runNet (if ((err!(Z)) > 0.0001) then (times-1) else 0) (Just diff) net'' state 
 
 initImages :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO( (Array U DIM2 Float, Array U DIM2 Float) )
 initImages factor left right = do
@@ -97,9 +87,10 @@ prepareImage factor img = do
     computeP d_greyImg
 
 
-writeDisparities :: MarkovNet U -> Array U DIM3 Float -> String -> IO()
+writeDisparities :: DynamicNetwork U U -> Array U DIM3 Float -> String -> IO()
 writeDisparities net stateData fileName = do
     disp <- disparities net (retrieveObservedState stateData)
     max_ <- foldAllP max 0 disp
-    let (dispMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
-    runIL $ writeImage fileName $ floatToGrayscale dispMap
+    let (disparityMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
+    runIL $ writeImage fileName $ floatToGrayscale disparityMap
+

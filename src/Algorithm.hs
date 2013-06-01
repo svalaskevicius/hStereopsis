@@ -11,7 +11,8 @@ module Algorithm
         , gaussian
 
         , initMarkovNetwork
-        , scaleNet
+        , initDisparityMap 
+        , initDynamicNetwork 
         , updateMessages
         , disparityCompatibility
         , initObservedStates
@@ -20,7 +21,7 @@ module Algorithm
         , normaliseNet
         , networkDiff
 
-        , MarkovNet
+        , DynamicNetwork , network, dispMap
         , DisparityCompatibility
         , ObservedState
   ) where
@@ -33,7 +34,7 @@ import           Data.List.Extras.Argmax
 {-|
   Define Markov Network for message passing of Loopy Belief Propagation
   The dimensions define values as:
-        Z :. T_x :. T_y :. S_d :. Disparity
+        Z :. T_x :. T_y :. S_d :. Disparity shift (see disparityValue) from the mean
   Where S_d takes values according to the following schema
   depending on relative position from T:
     0
@@ -54,6 +55,16 @@ type DisparityCompatibility = (Int -> Int -> Float)
 -}
 type ObservedState = (Int -> Int -> Int -> Float)
 
+{-|
+  Holds disparity value for each target pixel
+        Z :. T_x :. T_y 
+-}
+type DisparityMeans a = Array a DIM2 Int
+
+data DynamicNetwork a b = DynamicNetwork {
+        network :: MarkovNet a,
+        dispMap :: DisparityMeans b
+    }
 
 -- | Find a downsampling factor of 2, so that both dimensions are smaller or equal than the given number in pixels
 minimumFactorForImageSize :: (Source a Float) => Int -> Array a DIM2 Float -> Int
@@ -98,21 +109,14 @@ gaussian width sigma = delay . mapStencil2 BoundClamp (generateGaussKernel width
 initMarkovNetwork :: Int -> Int -> Int -> IO(MarkovNet U)
 initMarkovNetwork width height nDisparities = computeP $ R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
 
--- | Quick scaling of a markov network used for upsampling in hierarchical algorithm
-scaleNet :: MarkovNet U -> Int -> Int -> IO(MarkovNet U)
-scaleNet net width height = computeP $ 
-        traverse
-            net 
-            (\(Z:._:._:.sd:.d) -> (Z:.width:.height:.sd:.d))
-            (\f (Z:.x:.y:.sd:.d) -> 
-                let (sourceX::Int) = floor((fromIntegral x :: Float) / (fromIntegral (width) :: Float) * fromIntegral w :: Float)
-                    (sourceY::Int) = floor((fromIntegral y :: Float) / (fromIntegral (height) :: Float) * fromIntegral h :: Float)
-                    (sourceD::Int) = floor((fromIntegral d :: Float) / (fromIntegral (width) :: Float) * fromIntegral w :: Float)
-                in f (Z:.sourceX:.sourceY:.sd:.sourceD) 
-            )
-        where
-        (Z :. w :. h :. _ :. _) = extent net
+initDisparityMap :: Int -> Int -> IO(DisparityMeans U)
+initDisparityMap width height = computeP $ R.fromFunction (ix2 width  height) (\_ -> 0::Int)
 
+initDynamicNetwork :: Int -> Int -> Int -> IO(DynamicNetwork U U)
+initDynamicNetwork width height nDisparities = do
+    net <- initMarkovNetwork width height nDisparities
+    disp <- initDisparityMap width height
+    return (DynamicNetwork net disp)
 
 
 disparityCompatibility :: DisparityCompatibility
@@ -137,28 +141,33 @@ initObservedStates dispList imgLeft imgRight = computeP $ traverse
 retrieveObservedState :: Array U DIM3 Float -> ObservedState
 retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
 
-updateMessages :: Source a Float => Array U DIM2 Float -> MarkovNet a -> DisparityCompatibility -> ObservedState -> IO(MarkovNet U)
-updateMessages lastDiff net dispCompat observedState = computeP $ traverse net id (lazyMessage lastDiff dispCompat observedState (width, height, nDisparities))
+updateMessages :: Source a Float => Source b Int => Array U DIM2 Float -> DynamicNetwork a b -> DisparityCompatibility -> ObservedState -> IO(DynamicNetwork U b)
+updateMessages lastDiff net dispCompat observedState = do
+        let dispMap' = dispMap net
+        network' <- computeP $ traverse (network net) id (lazyMessage lastDiff dispMap' dispCompat observedState (width, height, nDisparities))
+        return (DynamicNetwork network' dispMap')
         where
-        (Z :. width :. height :. _ :. nDisparities) = extent net
+        (Z :. width :. height :. _ :. nDisparities) = extent (network net)
 
-disparities :: Source a Float => MarkovNet a -> ObservedState -> IO(Array U DIM2 Int)
+disparities :: Source a Float => Source b Int => DynamicNetwork a b -> ObservedState -> IO(Array U DIM2 Int)
 disparities net observedState = computeP $ traverse
-                                           net
+                                           (network net)
                                            (\ (Z:.w:.h:.4:._) -> (Z:.h:.w))
-                                           (\_ (Z:.y:.x) -> (argmax (belief net observedState x y) [0..nDisparities-1]))
+                                           (\_ (Z:.y:.x) -> (argmax (belief (network net) observedState x y) [0..nDisparities-1]))
                                            where
-                                           (Z:._:._:._:.nDisparities) = extent net
+                                           (Z:._:._:._:.nDisparities) = extent (network net)
 
-normaliseNet :: MarkovNet U -> IO(MarkovNet U)
+normaliseNet :: DynamicNetwork U U -> IO(DynamicNetwork U U)
 normaliseNet net = do
-        ds <- sumP net
-        let (Z:._:._:._:.ndisp) = extent net
-        computeP $ traverse net id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp)
+        ds <- sumP (network net)
+        let (Z:._:._:._:.ndisp) = extent (network net)
+            dispMap' = dispMap net
+        net' <- computeP $ traverse (network net) id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp)
+        return (DynamicNetwork net' dispMap')
 
-networkDiff :: MarkovNet U -> MarkovNet U -> IO(Array U DIM2 Float)
+networkDiff :: DynamicNetwork U U -> DynamicNetwork U U -> IO(Array U DIM2 Float)
 networkDiff a b = do
-    diff :: MarkovNet U <- computeP $ a -^ b
+    diff :: MarkovNet U <- computeP $ (network a) -^ (network b)
     sqDiff :: MarkovNet U <- computeP $ diff *^ diff
     r1 <- sumP $ sqDiff
     sumP r1
@@ -170,24 +179,24 @@ belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int ->
 belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]]
 
 
-lazyMessage :: Array U DIM2 Float -> DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
-lazyMessage lastDiff disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
+lazyMessage :: Source a Int => Array U DIM2 Float -> DisparityMeans a -> DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
+lazyMessage lastDiff disparitiesMap disparityCompat observedState (width, height, nDisparities) net (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
                     let alpha = 0.01
                     in if lastDiff!(Z:.sx:.sy) < alpha then
-                        network(Z:.tx:.ty:.sd:.d_T)
+                        net(Z:.tx:.ty:.sd:.d_T)
                     else
-                        newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T)
+                        newMessage disparitiesMap disparityCompat observedState (width, height, nDisparities) net (Z :. tx :. ty :. sd :. d_T)
                 Nothing -> 1
 
-newMessage :: DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
-newMessage disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
+newMessage :: Source a Int => DisparityMeans a -> DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
+newMessage disparitiesMap disparityCompat observedState (width, height, nDisparities) net (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
                         let energy d_S = disparityCompat d_S d_T
                                 * observedState sx sy d_S
-                                * product [network (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
+                                * product [net (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
                         in sum [energy d_S | d_S<-[0..nDisparities-1]]
                 Nothing -> 1
 
@@ -206,6 +215,15 @@ sourceCoordinates (_, _) tx ty 3 = if tx > 0 then Just (tx-1, ty) else Nothing
 sourceCoordinates _ _ _ _ = error "sourceCoordinates:: Cannot compute source position from the given sd"
 
 
+disparityValue :: Source a Int => DisparityMeans a -> Int -> Int -> Int -> Int -> Int
+disparityValue disparityMap nLevels x y level = disparityMap!(Z:.x:.y) + deltaDisp
+    where
+        (Z:.width:.height) = extent disparityMap
+        maxSize = max width height
+        coverage = 8 -- 1/8 coverage of max dimension
+        currentLevelRatio = (fromIntegral level - ((fromIntegral nLevels)::Float) / 2::Float) ^ (3::Integer)
+        maxLevelRatio = (((fromIntegral nLevels)::Float) / 2::Float) ^ (3::Integer)
+        deltaDisp = floor(fromIntegral maxSize / coverage * currentLevelRatio / maxLevelRatio)
 
 
 -- Private Gaussian Filter functions:

@@ -174,7 +174,7 @@ lazyMessage :: Array U DIM2 Float -> DisparityCompatibility -> ObservedState -> 
 lazyMessage lastDiff disparityCompat observedState (width, height, nDisparities) network (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
-                    let alpha = 0.001
+                    let alpha = 0.01
                     in if lastDiff!(Z:.sx:.sy) < alpha then
                         network(Z:.tx:.ty:.sd:.d_T)
                     else
@@ -188,7 +188,7 @@ newMessage disparityCompat observedState (width, height, nDisparities) network (
                         let energy d_S = disparityCompat d_S d_T
                                 * observedState sx sy d_S
                                 * product [network (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
-                        in maximum [energy d_S | d_S<-[0..nDisparities-1]]
+                        in sum [energy d_S | d_S<-[0..nDisparities-1]]
                 Nothing -> 1
 
 inverseRelation :: Int -> Int

@@ -16,7 +16,6 @@ module Algorithm
         , updateMessages
         , disparityCompatibility
         , initObservedStates
-        , retrieveObservedState
         , disparities
         , normaliseNet
         , networkDiff
@@ -53,7 +52,7 @@ type DisparityCompatibility = (Int -> Int -> Float)
   Calculate data likelihood for Target position and given disparity
   Parameters: T_x, T_y, D
 -}
-type ObservedState = (Int -> Int -> Int -> Float)
+type ObservedState = Array U DIM3 Float
 
 {-|
   Holds disparity value for each target pixel
@@ -123,23 +122,19 @@ disparityCompatibility :: DisparityCompatibility
 disparityCompatibility ds dt = if dx < t then (1-e_p)*exp(-(dx/sigma_p))+e_p else e_p
         where
         e_p = 0.05
-        sigma_p = 0.6
-        t = 4
+        sigma_p = 3
+        t = 20
         dx = abs(fromIntegral(ds - dt))
 
-initObservedStates :: [Int] -> Array U DIM2 Float -> Array U DIM2 Float -> IO(Array U DIM3 Float)
-initObservedStates dispList imgLeft imgRight = computeP $ traverse
+initObservedStates :: Array U DIM2 Float -> Array U DIM2 Float -> IO(ObservedState)
+initObservedStates imgLeft imgRight = computeP $ traverse
         imgLeft
-        (\(Z:.h:.w) -> (Z:.w:.h:.nDisparities))
-        (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y (dispList!!d))/sigma_d))+e_d)
+        (\(Z:.h:.w) -> (Z:.w:.h:.w))
+        (\_ (Z:.x:.y:.d) -> (1-e_d)*exp(-(abs(f x y d)/sigma_d))+e_d)
         where
-        nDisparities = length dispList
         e_d = 0.01
         sigma_d = 0.3125
-        f x y d = if x >= d then imgLeft ! (Z :. y :. x) - imgRight ! (Z :. y :. x - d) else 1
-
-retrieveObservedState :: Array U DIM3 Float -> ObservedState
-retrieveObservedState stateMap tx ty d = stateMap!(Z:.tx:.ty:.d)
+        f x y d = if x >= d then imgLeft ! (Z :. y :. x) - imgRight ! (Z :. y :. x - d) else 0.5
 
 updateMessages :: Source a Float => Source b Int => Array U DIM2 Float -> DynamicNetwork a b -> DisparityCompatibility -> ObservedState -> IO(DynamicNetwork U b)
 updateMessages lastDiff net dispCompat observedState = do
@@ -149,20 +144,33 @@ updateMessages lastDiff net dispCompat observedState = do
         where
         (Z :. width :. height :. _ :. nDisparities) = extent (network net)
 
-disparities :: Source a Float => Source b Int => DynamicNetwork a b -> ObservedState -> IO(Array U DIM2 Int)
+disparities :: Source a Float => Source b Int => DynamicNetwork a b -> ObservedState -> IO(DisparityMeans U)
 disparities net observedState = computeP $ traverse
-                                           (network net)
-                                           (\ (Z:.w:.h:.4:._) -> (Z:.h:.w))
-                                           (\_ (Z:.y:.x) -> (argmax (belief (network net) observedState x y) [0..nDisparities-1]))
+                                           (dispMap net)
+                                           id
+                                           (\_ (Z:.x:.y) -> (disparityValue (dispMap net) nDisparities x y (maxDisp x y)))
                                            where
                                            (Z:._:._:._:.nDisparities) = extent (network net)
+                                           maxDisp x y = argmax (belief net observedState nDisparities x y) [0..nDisparities-1]
 
-normaliseNet :: DynamicNetwork U U -> IO(DynamicNetwork U U)
-normaliseNet net = do
+normaliseNet :: DynamicNetwork U U -> ObservedState -> IO(DynamicNetwork U U)
+normaliseNet net state = do
+        dispMap' <- disparities net state
         ds <- sumP (network net)
         let (Z:._:._:._:.ndisp) = extent (network net)
-            dispMap' = dispMap net
-        net' <- computeP $ traverse (network net) id (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp)
+        net' <- computeP $ traverse 
+            (network net) 
+            id 
+            (\f (Z:.x:.y:.sd:.d) -> 
+                if ((dispMap net)!(Z:.x:.y) == dispMap'!(Z:.x:.y)) then 
+                    f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp 
+                else 0.5 -- TODO: interpolate a more correct likelihood instead of the full reset
+                    -- current level - d
+                    -- currentDisp - dispMap'xy + (OLDdispValue d - (dispMap net)xy)
+                    -- find two levels l1, l2, so that NEWdispValue l1 <= currentDisp <= NEWdispValue l2
+                    -- then new likelihood for d = net x y sd l1 + (net x y sd l2 - net x y sd l1)
+                    -- * (dispValue l2 - currentDisp) / (dispValue l2 - dispValue l1)
+            )
         return (DynamicNetwork net' dispMap')
 
 networkDiff :: DynamicNetwork U U -> DynamicNetwork U U -> IO(Array U DIM2 Float)
@@ -175,8 +183,13 @@ networkDiff a b = do
 
 -- Private Loopy Belief Propagation functions:
 
-belief :: Source a Float => MarkovNet a -> ObservedState -> Int -> Int -> Int -> Float
-belief net observedState x y d = observedState x y d * product [net!(Z :. x :. y :. k :. d) | k <- [0..3]]
+belief :: Source a Float => Source b Int => DynamicNetwork a b -> ObservedState -> Int -> Int -> Int -> Int -> Float
+belief net observedState nDisparities x y d = stateValue * probForPoint 
+    where
+        probForPoint = product [(network net)!(Z :. x :. y :. k :. d) | k <- [0..3]]
+        disp = disparityValue (dispMap net) nDisparities x y d
+        (Z:.width:._) = extent (dispMap net)
+        stateValue = if (disp<0) || (disp >= width) then 0 else observedState!(Z:.x:.y:.disp)
 
 
 lazyMessage :: Source a Int => Array U DIM2 Float -> DisparityMeans a -> DisparityCompatibility -> ObservedState -> (Int, Int, Int) -> (DIM4 -> Float) -> DIM4 -> Float
@@ -194,10 +207,20 @@ newMessage :: Source a Int => DisparityMeans a -> DisparityCompatibility -> Obse
 newMessage disparitiesMap disparityCompat observedState (width, height, nDisparities) net (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
-                        let energy d_S = disparityCompat d_S d_T
-                                * observedState sx sy d_S
+                        let observed d = if (d < 0) || (d >= width) then 0 else observedState!(Z:.sx:.sy:.d)
+                            currStepValue d_S = disparityValue disparitiesMap nDisparities sx sy d_S
+                            levelRange d_S = abs(2*d_S-2 - nDisparities)
+                            fadingFactor d = 0.995^(d^2) -- TODO: gaussian * image width
+                            maxObserved d_S = let current = currStepValue d_S
+                                                  lRange = levelRange d_S
+                                in maximum (
+                                    [(fadingFactor d) * observed (current-d) | d <- [1..lRange]]
+                                    ++ [(fadingFactor d) * observed (current+d) | d <- [0..lRange]]
+                                )
+                            energy d_S = disparityCompat (disparityValue disparitiesMap nDisparities sx sy d_S) (disparityValue disparitiesMap nDisparities tx ty d_T)
+                                * maxObserved d_S
                                 * product [net (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
-                        in sum [energy d_S | d_S<-[0..nDisparities-1]]
+                        in sum [energy _d_shift | _d_shift<-[0..nDisparities-1]]
                 Nothing -> 1
 
 inverseRelation :: Int -> Int
@@ -220,11 +243,11 @@ disparityValue disparityMap nLevels x y level = disparityMap!(Z:.x:.y) + deltaDi
     where
         (Z:.width:.height) = extent disparityMap
         maxSize = max width height
-        coverage = 8 -- 1/8 coverage of max dimension
-        currentLevelRatio = (fromIntegral level - ((fromIntegral nLevels)::Float) / 2::Float) ^ (3::Integer)
-        maxLevelRatio = (((fromIntegral nLevels)::Float) / 2::Float) ^ (3::Integer)
-        deltaDisp = floor(fromIntegral maxSize / coverage * currentLevelRatio / maxLevelRatio)
-
+        coverage = 5 -- 1/coverage of max dimension
+        currentLevelRatio = ((fromIntegral level - (fromIntegral nLevels)/2::Float)) ^ (2::Integer)
+        maxLevelRatio = (fromIntegral(nLevels)/2::Float) ^ (2::Integer)
+        sign =  if level*2 > nLevels then 1 else -1
+        deltaDisp = floor(fromIntegral maxSize / coverage * currentLevelRatio / maxLevelRatio) * sign
 
 -- Private Gaussian Filter functions:
 

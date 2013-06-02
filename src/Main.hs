@@ -27,7 +27,7 @@ run fileNameLeft fileNameRight = do
         (floatImgRight::Array U DIM2 Float) <- computeP $ (grayscaleToFloat . toGrayscale) imgRight
         let downSampleFactor = minimumFactorForImageSize 212 floatImgLeft 
 
-        (_, _) <- calculateDisparities downSampleFactor floatImgLeft floatImgRight
+        _ <- calculateDisparities downSampleFactor floatImgLeft floatImgRight
 
         return()
 
@@ -40,13 +40,13 @@ calculateDisparities factor imgLeft imgRight = do
                 writeImage ("left_"++show factor++".png") (floatToGrayscale greyImgLeft)
                 writeImage ("right_"++show factor++".png") (floatToGrayscale greyImgRight)
         let (Z:.height:.width) = extent greyImgLeft
-            nDisparities = 8
+            nDisparities = 9
 
         putStrLn ("W: "++ show width ++ ", H: " ++ show height)
 
         putStrLn "init network data"
         net <- initDynamicNetwork width height nDisparities
-        stateData <- initObservedStates [i*4 | i<-[0..nDisparities-1]] greyImgLeft greyImgRight
+        stateData <- initObservedStates greyImgLeft greyImgRight
         net' <- runNet 500 Nothing net stateData
 
         writeDisparities net' stateData ("disparities_"++(show factor)++".png")
@@ -54,7 +54,7 @@ calculateDisparities factor imgLeft imgRight = do
         return (net', stateData)
 
 
-runNet :: Int -> Maybe (Array U DIM2 Float) -> DynamicNetwork U U -> Array U DIM3 Float -> IO(DynamicNetwork U U)
+runNet :: Int -> Maybe (Array U DIM2 Float) -> DynamicNetwork U U -> ObservedState -> IO(DynamicNetwork U U)
 runNet 0 _ net _ = return net
 runNet times Nothing net state =
     runNet times (Just initialDiff) net state
@@ -64,14 +64,15 @@ runNet times Nothing net state =
 
 runNet times (Just lastDiff) net state = do
         putStrLn ("running.. "++show times++" times left")
-        net' <- updateMessages lastDiff net disparityCompatibility (retrieveObservedState state)
-        net'' <- normaliseNet net'
+        net' <- updateMessages lastDiff net disparityCompatibility state
+        net'' <- normaliseNet net' state
         diff <- networkDiff net net''
         err' <- sumP diff
-        err <- sumP err'
-        putStrLn ("err: "++show err)
+        err'' <- sumP err'
+        let err = (err''!(Z)::Float)
+        putStrLn ("diffErr: "++show err)
         runIL $ writeImage ("diff_"++(show times)++".png") $ floatToGrayscale diff
-        runNet (if ((err!(Z)) > 0.0001) then (times-1) else 0) (Just diff) net'' state 
+        runNet (if (err > 0.0001) then (times-1) else 0) (Just diff) net'' state 
 
 initImages :: (Source a Float) => Int -> Array a DIM2 Float -> Array a DIM2 Float -> IO( (Array U DIM2 Float, Array U DIM2 Float) )
 initImages factor left right = do
@@ -89,7 +90,7 @@ prepareImage factor img = do
 
 writeDisparities :: DynamicNetwork U U -> Array U DIM3 Float -> String -> IO()
 writeDisparities net stateData fileName = do
-    disp <- disparities net (retrieveObservedState stateData)
+    disp <- disparities net stateData
     max_ <- foldAllP max 0 disp
     let (disparityMap::Array U DIM2 Float) = computeS $ R.map (\x-> fromIntegral x / fromIntegral max_) disp
     runIL $ writeImage fileName $ floatToGrayscale disparityMap

@@ -216,17 +216,6 @@ adjustShiftedDisparityLikelihoods net newDisparities = do
         (\f (Z:.x:.y:.sd:.d) -> 
             if ((dispMap net)!(Z:.x:.y) == newDisparities!(Z:.x:.y)) then f(Z:.x:.y:.sd:.d)
             else f(Z:.x:.y:.sd:.(newValueLevelInOldDispMap x y d))
-                -- traceShow (x, y, d, newValueLevelInOldDispMap x y d, oldDisp x y d, newDisp x y d) exp(-abs((fromIntegral d)-(fromIntegral (ndisp-1))/(2::Float))/(10::Float))
-                -- newDisp = disparityValueForMeans net newDisparities x y d 
-                -- oldDisp = disparityValue net x y d
-                -- dispDiff = newDisp - oldDisp
-                --
-                -- TODO: interpolate a more correct likelihood instead of the full reset
-                -- current level - d
-                -- currentDisp - dispMap'xy + (OLDdispValue d - (dispMap net)xy)
-                -- find two levels l1, l2, so that NEWdispValue l1 <= currentDisp <= NEWdispValue l2
-                -- then new likelihood for d = net x y sd l1 + (net x y sd l2 - net x y sd l1)
-                -- * (dispValue l2 - currentDisp) / (dispValue l2 - dispValue l1)
         )
 
 

@@ -63,7 +63,7 @@ type DisparityMeans a = Array a DIM2 Int
 data DynamicNetwork a b = DynamicNetwork {
         network :: MarkovNet a,
         dispMap :: DisparityMeans b,
-        offsets :: [Int]
+        offsets :: [Int] -- TODO: use O(1) access data structure
     }
 
 -- | Find a downsampling factor of 2, so that both dimensions are smaller or equal than the given number in pixels
@@ -110,7 +110,7 @@ initMarkovNetwork :: Int -> Int -> Int -> IO(MarkovNet U)
 initMarkovNetwork width height nDisparities = computeP $ R.fromFunction (ix4 width  height (4::Int) nDisparities) (\_ -> 1::Float)
 
 initDisparityMap :: Int -> Int -> IO(DisparityMeans U)
-initDisparityMap width height = computeP $ R.fromFunction (ix2 width  height) (\_ -> floor(fromIntegral width / (15::Float)))
+initDisparityMap width height = computeP $ R.fromFunction (ix2 width  height) (\_ -> 0)
 
 initDynamicNetwork :: Int -> Int -> Int -> IO(DynamicNetwork U U)
 initDynamicNetwork width height nDisparities = do
@@ -158,25 +158,18 @@ disparities net observedState = computeP $ traverse
 
 normaliseNet :: DynamicNetwork U U -> ObservedState -> IO(DynamicNetwork U U)
 normaliseNet net state = do
+        dispMap' <- shiftDisparities net
 --        dispMap' <- disparities net state
-        ds <- sumP (network net)
         let (Z:._:._:._:.ndisp) = extent (network net)
         let offsets' = offsets net
-            dispMap' = dispMap net
+--            dispMap' = dispMap net
+--            shiftedNet = network net
+        shiftedNet <- adjustShiftedDisparityLikelihoods net dispMap'
+        ds <- sumP shiftedNet
         net' <- computeP $ traverse 
-            (network net) 
+            shiftedNet 
             id 
-            (\f (Z:.x:.y:.sd:.d) -> 
-                if ((dispMap net)!(Z:.x:.y) == dispMap'!(Z:.x:.y)) then 
-                    f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd) * fromIntegral ndisp 
-                else exp(-abs((fromIntegral d)-(fromIntegral (ndisp-1))/(2::Float))/(10::Float)) 
-                    -- TODO: interpolate a more correct likelihood instead of the full reset
-                    -- current level - d
-                    -- currentDisp - dispMap'xy + (OLDdispValue d - (dispMap net)xy)
-                    -- find two levels l1, l2, so that NEWdispValue l1 <= currentDisp <= NEWdispValue l2
-                    -- then new likelihood for d = net x y sd l1 + (net x y sd l2 - net x y sd l1)
-                    -- * (dispValue l2 - currentDisp) / (dispValue l2 - dispValue l1)
-            )
+            (\f (Z:.x:.y:.sd:.d) -> f (Z:.x:.y:.sd:.d) / ds!(Z:.x:.y:.sd))
         return (DynamicNetwork net' dispMap' offsets')
 
 networkDiff :: DynamicNetwork U U -> DynamicNetwork U U -> IO(Array U DIM2 Float)
@@ -188,6 +181,52 @@ networkDiff a b = do
 
 
 -- Private Loopy Belief Propagation functions:
+
+
+shiftDisparities :: Source a Float => Source b Int => DynamicNetwork a b -> IO(DisparityMeans U)
+shiftDisparities net = do
+    let (Z:._:._:._:.ndisp) = extent (network net)
+        middle = floor(fromIntegral(ndisp)/(2::Float))
+    let probForPoint x y d = product [(network net)!(Z:.x:.y:.k:.d) | k <- [0..3]]
+        maxD x y = argmax (probForPoint x y) [0..ndisp-1]
+    computeP $ traverse 
+        (dispMap net)
+        id 
+        (\f (Z:.x:.y) ->
+            let newD = maxD x y
+                newDProb = probForPoint x y newD
+                oldProb = probForPoint x y middle
+            in if abs(newD-middle)<=1 || (newDProb*(0.9^((newD-middle)^2)) < oldProb) then f(Z:.x:.y)
+            else disparityValue net x y newD
+        )
+
+
+adjustShiftedDisparityLikelihoods :: Source a Float => Source b Int => DynamicNetwork a b -> DisparityMeans b -> IO(MarkovNet U)
+adjustShiftedDisparityLikelihoods net newDisparities = do
+    let (Z:._:._:._:.ndisp) = extent (network net)
+        newDisp = disparityValueForMeans net newDisparities
+        oldDisp = disparityValue net
+        dispDiff x y d = (newDisp x y d) - (oldDisp x y d)
+        newValueLevelInOldDispMap x y d = disparityLevelFromValue net (dispMap net) x y (newDisp x y d)
+    computeP $ traverse 
+        (network net)
+        id
+        (\f (Z:.x:.y:.sd:.d) -> 
+            if ((dispMap net)!(Z:.x:.y) == newDisparities!(Z:.x:.y)) then f(Z:.x:.y:.sd:.d)
+            else f(Z:.x:.y:.sd:.(newValueLevelInOldDispMap x y d))
+                -- traceShow (x, y, d, newValueLevelInOldDispMap x y d, oldDisp x y d, newDisp x y d) exp(-abs((fromIntegral d)-(fromIntegral (ndisp-1))/(2::Float))/(10::Float))
+                -- newDisp = disparityValueForMeans net newDisparities x y d 
+                -- oldDisp = disparityValue net x y d
+                -- dispDiff = newDisp - oldDisp
+                --
+                -- TODO: interpolate a more correct likelihood instead of the full reset
+                -- current level - d
+                -- currentDisp - dispMap'xy + (OLDdispValue d - (dispMap net)xy)
+                -- find two levels l1, l2, so that NEWdispValue l1 <= currentDisp <= NEWdispValue l2
+                -- then new likelihood for d = net x y sd l1 + (net x y sd l2 - net x y sd l1)
+                -- * (dispValue l2 - currentDisp) / (dispValue l2 - dispValue l1)
+        )
+
 
 belief :: Source a Float => Source b Int => DynamicNetwork a b -> ObservedState -> Int -> Int -> Int -> Int -> Float
 belief net observedState nDisparities x y d = stateValue * probForPoint 
@@ -215,7 +254,7 @@ newMessage dynnet disparityCompat observedState (width, height, nDisparities) ne
                 Just (sx, sy) ->
                         let observed d = if (d < 0) || (d >= maxDisp) then 0 else observedState!(Z:.sx:.sy:.d)
                             currStepValue d_S = disparityValue dynnet sx sy d_S
-                            fadingFactor d = 0.999^(d*d) -- TODO: gaussian * image width
+                            fadingFactor d = 1 -- 0.999^(d*d) -- TODO: gaussian * image width
                             maxObserved d_S = let current = currStepValue d_S
                                                   lRange = levelRange dynnet d_S
                                 in maximum (
@@ -224,7 +263,7 @@ newMessage dynnet disparityCompat observedState (width, height, nDisparities) ne
                             energy d_S = disparityCompat (disparityValue dynnet sx sy d_S) (disparityValue dynnet tx ty d_T)
                                 * maxObserved d_S
                                 * product [net (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
-                        in sum [energy _d_shift | _d_shift<-[0..nDisparities-1]]
+                        in maximum [energy _d_shift | _d_shift<-[0..nDisparities-1]]
                 Nothing -> 1
         where
             disparitiesMap = dispMap dynnet
@@ -260,9 +299,11 @@ disparityOffsets disparityMap coverage nLevels = Prelude.map offset [0 .. nLevel
                     sign =  if i*2 > nLevels then 1 else -1
 
 disparityValue :: Source a Float => Source b Int => DynamicNetwork a b -> Int -> Int -> Int -> Int
-disparityValue net x y level = disp
+disparityValue net x y level = disparityValueForMeans net (dispMap net) x y level
+
+disparityValueForMeans :: Source a Float => Source b Int => DynamicNetwork a b -> DisparityMeans b -> Int -> Int -> Int -> Int
+disparityValueForMeans net disparityMap x y level = disp
     where 
-        disparityMap = dispMap net
         (Z:.width:._) = extent disparityMap
         offs = offsets net
         disp = disparityMap!(Z:.x:.y) + offs!!level
@@ -271,9 +312,25 @@ levelRange :: Source a Float => Source b Int => DynamicNetwork a b -> Int -> Int
 levelRange net level = if minLevelDiff > 0 then minLevelDiff - 1 else 0
     where
         offs = offsets net
-        prev = if level == 0 then 0 else level - 1
-        next = if level == (length offs)-1 then level else level + 1
-        minLevelDiff = min (abs(offs!!prev)) (abs(offs!!next))
+        prev = level - 1
+        next = level + 1
+        minLevelDiff = if prev<0 then abs(offs!!level - offs!!next)
+                       else if next>=(length offs) then abs(offs!!level - offs!!prev)
+                       else min (abs(offs!!level - offs!!prev)) (abs(offs!!level - offs!!next))
+
+disparityLevelFromValue :: Source a Float => Source b Int => DynamicNetwork a b -> DisparityMeans b -> Int -> Int -> Int -> Int
+disparityLevelFromValue net disparityMap x y disparity = dispLevel 
+    where
+    dispShift = disparity - disparityMap!(Z:.x:.y)
+    middle = floor(fromIntegral(length(offsets net))/(2::Float))
+    dispLevelSuitable l = ((disparityValueForMeans net disparityMap x y l)+(levelRange net l) >= disparity) && ((disparityValueForMeans net disparityMap x y l)-(levelRange net l) <= disparity)
+    findSuitableLevel [] = error "empty list passed where the last element should be the default value"
+    findSuitableLevel [l] = l
+    findSuitableLevel (l:rest) = if dispLevelSuitable l then l else findSuitableLevel rest
+    dispLevel = if disparity < 0 then 0
+                else if dispShift < 0 then (findSuitableLevel ([middle-k | k<-[1..middle]] ++ [0]))
+                else if dispShift > 0 then (findSuitableLevel ([middle+k | k<-[1..middle]] ++ [length(offsets net)-1]))
+                else 0
 
 -- Private Gaussian Filter functions:
 

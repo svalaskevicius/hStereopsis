@@ -60,10 +60,12 @@ type ObservedState = Array U DIM3 Float
 -}
 type DisparityMeans a = Array a DIM2 Int
 
+type Offsets a = Array a DIM1 Int
+
 data DynamicNetwork a b = DynamicNetwork {
         network :: MarkovNet a,
         dispMap :: DisparityMeans b,
-        offsets :: [Int] -- TODO: use O(1) access data structure
+        offsets :: Offsets b
     }
 
 -- | Find a downsampling factor of 2, so that both dimensions are smaller or equal than the given number in pixels
@@ -138,7 +140,7 @@ initObservedStates imgLeft imgRight = computeP $ traverse
         sigma_d = 0.3125
         f x y d = if x >= d then imgLeft ! (Z :. y :. x) - imgRight ! (Z :. y :. x - d) else 0.5
 
-updateMessages :: Source a Float => Source b Int => Array U DIM2 Float -> DynamicNetwork a b -> DisparityCompatibility -> ObservedState -> IO(DynamicNetwork U b)
+updateMessages :: Array U DIM2 Float -> DynamicNetwork U U -> DisparityCompatibility -> ObservedState -> IO(DynamicNetwork U U)
 updateMessages lastDiff net dispCompat observedState = do
         let dispMap' = dispMap net
         let offsets' = offsets net
@@ -196,8 +198,8 @@ shiftDisparities net = do
             let newD = maxD x y
                 newDProb = probForPoint x y newD
                 oldProb = probForPoint x y middle
-            in if abs(newD-middle)<=1 || (newDProb*(0.9^((newD-middle)^2)) < oldProb) then f(Z:.x:.y)
-            else disparityValue net x y newD
+            in if abs(newD-middle)<=1 || (newDProb*(0.9^((newD-middle)^2)) < oldProb) || (newDProb < 0.00001) then f(Z:.x:.y)
+            else traceShow (x, y, newD, disparityValue net x y newD, newDProb, oldProb) disparityValue net x y newD
         )
 
 
@@ -284,8 +286,8 @@ sourceCoordinates (_, _) tx ty 3 = if tx > 0 then Just (tx-1, ty) else Nothing
 sourceCoordinates _ _ _ _ = error "sourceCoordinates:: Cannot compute source position from the given sd"
 
 
-disparityOffsets :: Source a Int => DisparityMeans a -> Float -> Int -> [Int]
-disparityOffsets disparityMap coverage nLevels = Prelude.map offset [0 .. nLevels-1]
+disparityOffsets :: Source a Int => DisparityMeans a -> Float -> Int -> Offsets U
+disparityOffsets disparityMap coverage nLevels = R.fromListUnboxed (Z:.nLevels) (Prelude.map offset [0 .. nLevels-1])
     where 
         (Z:.width:._) = extent disparityMap
         middle = floor(fromIntegral nLevels / 2::Float)
@@ -306,30 +308,33 @@ disparityValueForMeans net disparityMap x y level = disp
     where 
         (Z:.width:._) = extent disparityMap
         offs = offsets net
-        disp = disparityMap!(Z:.x:.y) + offs!!level
+        disp = disparityMap!(Z:.x:.y) + offs!(Z:.level)
 
 levelRange :: Source a Float => Source b Int => DynamicNetwork a b -> Int -> Int
 levelRange net level = if minLevelDiff > 0 then minLevelDiff - 1 else 0
     where
         offs = offsets net
+        (Z:.len) = extent offs
         prev = level - 1
         next = level + 1
-        minLevelDiff = if prev<0 then abs(offs!!level - offs!!next)
-                       else if next>=(length offs) then abs(offs!!level - offs!!prev)
-                       else min (abs(offs!!level - offs!!prev)) (abs(offs!!level - offs!!next))
+        minLevelDiff = if prev<0 then abs(offs!(Z:.level) - offs!(Z:.next))
+                       else if next>=len then abs(offs!(Z:.level) - offs!(Z:.prev))
+                       else min (abs(offs!(Z:.level) - offs!(Z:.prev))) (abs(offs!(Z:.level) - offs!(Z:.next)))
 
 disparityLevelFromValue :: Source a Float => Source b Int => DynamicNetwork a b -> DisparityMeans b -> Int -> Int -> Int -> Int
 disparityLevelFromValue net disparityMap x y disparity = dispLevel 
     where
+    offs = offsets net
+    (Z:.len) = extent offs
     dispShift = disparity - disparityMap!(Z:.x:.y)
-    middle = floor(fromIntegral(length(offsets net))/(2::Float))
+    middle = floor(fromIntegral(len)/(2::Float))
     dispLevelSuitable l = ((disparityValueForMeans net disparityMap x y l)+(levelRange net l) >= disparity) && ((disparityValueForMeans net disparityMap x y l)-(levelRange net l) <= disparity)
     findSuitableLevel [] = error "empty list passed where the last element should be the default value"
     findSuitableLevel [l] = l
     findSuitableLevel (l:rest) = if dispLevelSuitable l then l else findSuitableLevel rest
     dispLevel = if disparity < 0 then 0
                 else if dispShift < 0 then (findSuitableLevel ([middle-k | k<-[1..middle]] ++ [0]))
-                else if dispShift > 0 then (findSuitableLevel ([middle+k | k<-[1..middle]] ++ [length(offsets net)-1]))
+                else if dispShift > 0 then (findSuitableLevel ([middle+k | k<-[1..middle]] ++ [len-1]))
                 else 0
 
 -- Private Gaussian Filter functions:

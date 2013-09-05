@@ -1,9 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module ImageFormat
-  ( loadDevILPicture
-  , repaToPicture
-  , readRepaImage
+  ( 
+    readRepaImage
   , toGrayscale
   , floatToGrayscale, grayscaleToFloat
   ) where
@@ -15,7 +14,6 @@ import           Data.Array.Repa.Eval            as RE
 import           Data.Array.Repa.IO.DevIL        as RD
 import           Data.Array.Repa.Repr.ForeignPtr as R
 import           Data.Word
-import qualified Graphics.Gloss                  as G
 
 
 force
@@ -23,14 +21,6 @@ force
   => Array r1 sh e -> Array r2 sh e
 force = runIdentity . computeP
 
-
--- |Load  picture using 'Codec-Image-DevIL' and convert it a bitmap for display by 'Gloss'
-loadDevILPicture :: Bool -> FilePath -> IO (Int, Int, G.Picture)
-loadDevILPicture cache = liftM (repaToPicture cache) . readRepaImage
-
--- the number of columns, rows and a bitmap for use with 'Gloss'.
-repaToPicture :: Bool -> RD.Image -> (Int, Int, G.Picture)
-repaToPicture cache = multiChanToPicture cache . toRgba
 
 toGrayscale :: RD.Image -> RD.Image 
 toGrayscale (RD.Grey arr) = RD.Grey arr
@@ -99,11 +89,3 @@ grayToRgba arr =
                         _ -> f (Z :. i :. j)
                 )
 
-multiChanToPicture :: Bool -> RD.Image -> (Int, Int, G.Picture)
-multiChanToPicture cache (RD.RGBA arr) = (col, row, glossPic)
-        where
-                Z :. row :. col :. _ = extent arr
-                glossPic = G.bitmapOfForeignPtr col row
-                        (R.toForeignPtr arr)
-                        cache
-multiChanToPicture _ _ = error "unsopported format passed to multiChanToPicture"

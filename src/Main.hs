@@ -3,18 +3,23 @@
 
 module Main where
 
+import Prelude hiding (catch) 
 import           Algorithm
 --import           Graphics.Gloss
 import           Data.Array.Repa          as R hiding ((++))
 import           Data.Array.Repa.IO.DevIL
 import           ImageFormat
 import           System.Environment
+import           Control.Exception
 
 main :: IO()
 main = do
         args    <- getArgs
         case args of
-                [fileName1, fileName2] -> run fileName1 fileName2
+                [fileName1, fileName2] -> catch (run fileName1 fileName2) (\e -> do let err = show (e::SomeException)
+                                                                                    putStr err
+                                                                                    return ()
+                                                                                    )
                 _ -> putStr $ unlines [ "usage: left right" ]
 
 run :: FilePath -> FilePath -> IO ()

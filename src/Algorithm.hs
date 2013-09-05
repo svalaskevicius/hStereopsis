@@ -243,7 +243,7 @@ newMessage :: Source a Float => Source b Int => DynamicNetwork a b -> DisparityC
 newMessage dynnet disparityCompat observedState (width, height, nDisparities) net (Z :. tx :. ty :. sd :. d_T) =
         case sourceCoordinates (width, height) tx ty sd of
                 Just (sx, sy) ->
-                        let observed d = if (d < 0) || (d >= maxDisp) then 0 else observedState!(Z:.sx:.sy:.d)
+                        let observed d = if (d < 0) || (d >= maxDisp) then 0.05 else observedState!(Z:.sx:.sy:.d)
                             currStepValue d_S = disparityValue dynnet sx sy d_S
                             fadingFactor d = 1 -- 0.999^(d*d) -- TODO: gaussian * image width
                             maxObserved d_S = let current = currStepValue d_S

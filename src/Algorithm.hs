@@ -245,14 +245,12 @@ newMessage dynnet disparityCompat observedState (width, height, nDisparities) ne
                 Just (sx, sy) ->
                         let observed d = if (d < 0) || (d >= maxDisp) then 0.05 else observedState!(Z:.sx:.sy:.d)
                             currStepValue d_S = disparityValue dynnet sx sy d_S
-                            fadingFactor d = 1 -- 0.999^(d*d) -- TODO: gaussian * image width
+                            targetDisp = disparityValue dynnet tx ty d_T
                             maxObserved d_S = let current = currStepValue d_S
                                                   lRange = levelRange dynnet d_S
-                                in maximum (
-                                    [(fadingFactor d) * observed (current+d) | d <- [-lRange..lRange]]
-                                )
-                            energy d_S = disparityCompat (disparityValue dynnet sx sy d_S) (disparityValue dynnet tx ty d_T)
-                                * maxObserved d_S
+                                                  observedProb d = disparityCompat d targetDisp * observed d
+                                in maximum ( [ observedProb d  | d <- [(current-lRange)..(current+lRange)] ] )
+                            energy d_S = maxObserved d_S
                                 * product [net (Z :. sx :. sy :. k :. d_S) | k <- [0..3], k /= inverseRelation sd]
                         in maximum [energy _d_shift | _d_shift<-[0..nDisparities-1]]
                 Nothing -> 1
